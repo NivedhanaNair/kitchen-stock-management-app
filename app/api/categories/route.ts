@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createCategory, listCategories } from "@/lib/store";
 
 export async function GET() {
-  return NextResponse.json(listCategories());
+  return NextResponse.json(await listCategories());
 }
 
 export async function POST(request: NextRequest) {
@@ -12,6 +12,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
 
-  const category = createCategory(body.name);
+  const category = await createCategory(body.name);
   return NextResponse.json(category, { status: 201 });
 }

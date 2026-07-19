@@ -1,3 +1,13 @@
+import { and, eq, sql } from "drizzle-orm";
+import { db } from "@/lib/db";
+import {
+  categories,
+  itemLocationThresholds,
+  items,
+  locations,
+  stockEntries,
+  stockTakeSessions,
+} from "@/lib/schema";
 import type {
   Category,
   Item,
@@ -7,487 +17,321 @@ import type {
   StockLevel,
   StockTakeSession,
 } from "@/types";
-import { DEFAULT_CATEGORIES } from "@/lib/constants";
 
-interface Db {
-  locations: Location[];
-  categories: Category[];
-  items: Item[];
-  itemLocations: ItemLocation[];
-  stockEntries: StockEntry[];
-  sessions: StockTakeSession[];
+/** Drops undefined-valued keys so a partial update only touches fields the caller actually provided. */
+function definedFields<T extends object>(input: T): Partial<T> {
+  const result: Partial<T> = {};
+  for (const key in input) {
+    if (input[key] !== undefined) result[key] = input[key];
+  }
+  return result;
 }
 
-// Next.js dev mode reloads route modules on every request, which would wipe a
-// plain module-level array. Stashing the store on `globalThis` keeps Phase 1
-// data alive across hot reloads for the life of the server process.
-const globalForStore = globalThis as unknown as { __stockStore?: Db };
-
-function makeItem(
-  now: string,
-  fields: Pick<Item, "name" | "category" | "unit"> &
-    Partial<Pick<Item, "preferred_brand" | "notes">>
-): Item {
-  return {
-    id: crypto.randomUUID(),
-    name: fields.name,
-    category: fields.category,
-    unit: fields.unit,
-    preferred_brand: fields.preferred_brand ?? null,
-    notes: fields.notes ?? null,
-    is_active: true,
-    created_at: now,
-    updated_at: now,
-  };
+// Drizzle's `mode: "string"` timestamp columns round-trip Postgres's native text format
+// (e.g. "2026-07-19 00:59:48.13+00"), not JSON-safe ISO 8601 — normalize on the way out.
+function toIso(value: string): string;
+function toIso(value: string | null): string | null;
+function toIso(value: string | null): string | null {
+  return value === null ? null : new Date(value).toISOString();
 }
 
-function seed(): Db {
-  const now = new Date().toISOString();
-
-  const locations: Location[] = ["Kitchen", "Store Room", "Fridge", "Bathroom"].map((name) => ({
-    id: crypto.randomUUID(),
-    name,
-    is_active: true,
-  }));
-  const [kitchen, storeRoom, fridge, bathroom] = locations;
-
-  const categories: Category[] = DEFAULT_CATEGORIES.map((name) => ({
-    id: crypto.randomUUID(),
-    name,
-  }));
-  const byCategory = (name: string) => name;
-
-  const items: Item[] = [
-    makeItem(now, { name: "Rice", category: byCategory("Grains & Staples"), unit: "kg" }),
-    makeItem(now, { name: "Wheat Flour (Atta)", category: "Grains & Staples", unit: "kg" }),
-    makeItem(now, { name: "Toor Dal", category: "Pulses & Lentils (Dal)", unit: "kg" }),
-    makeItem(now, { name: "Moong Dal", category: "Pulses & Lentils (Dal)", unit: "kg" }),
-    makeItem(now, { name: "Turmeric Powder", category: "Spices & Masalas", unit: "g" }),
-    makeItem(now, { name: "Red Chilli Powder", category: "Spices & Masalas", unit: "g" }),
-    makeItem(now, { name: "Cooking Oil", category: "Cooking Essentials", unit: "litre" }),
-    makeItem(now, { name: "Ghee", category: "Cooking Essentials", unit: "g" }),
-    makeItem(now, { name: "Onion", category: "Vegetables & Fruits", unit: "kg" }),
-    makeItem(now, { name: "Potato", category: "Vegetables & Fruits", unit: "kg" }),
-    makeItem(now, { name: "Milk", category: "Dairy", unit: "litre" }),
-    makeItem(now, { name: "Curd", category: "Dairy", unit: "packet" }),
-    makeItem(now, { name: "Biscuits", category: "Snacks & Ready-to-eat", unit: "packet" }),
-    makeItem(now, { name: "Namkeen", category: "Snacks & Ready-to-eat", unit: "packet" }),
-    makeItem(now, { name: "Toothpaste", category: "Bathroom / Personal Care", unit: "pcs" }),
-    makeItem(now, { name: "Shampoo", category: "Bathroom / Personal Care", unit: "bottle" }),
-    makeItem(now, { name: "Dishwash Liquid", category: "Cleaning Supplies", unit: "bottle" }),
-    makeItem(now, { name: "Detergent", category: "Cleaning Supplies", unit: "kg" }),
-    makeItem(now, { name: "Diapers", category: "Baby/Child", unit: "packet" }),
-    makeItem(now, { name: "Baby Wipes", category: "Baby/Child", unit: "packet" }),
-    makeItem(now, { name: "LPG Cylinder", category: "Kitchen Consumables", unit: "pcs" }),
-    makeItem(now, { name: "Tissue Paper", category: "Kitchen Consumables", unit: "box" }),
-    makeItem(now, { name: "Agarbatti (Incense)", category: "Puja/Religious", unit: "packet" }),
-    makeItem(now, { name: "Camphor", category: "Puja/Religious", unit: "packet" }),
-    makeItem(now, { name: "Paracetamol", category: "Medicines/First Aid", unit: "box" }),
-    makeItem(now, { name: "Band-aids", category: "Medicines/First Aid", unit: "box" }),
-  ];
-
-  const byName = (name: string) => items.find((i) => i.name === name)!;
-
-  const itemLocations: ItemLocation[] = [
-    {
-      id: crypto.randomUUID(),
-      item_id: byName("Rice").id,
-      location_id: storeRoom.id,
-      reorder_threshold: 5,
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: crypto.randomUUID(),
-      item_id: byName("Toor Dal").id,
-      location_id: kitchen.id,
-      reorder_threshold: 1,
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: crypto.randomUUID(),
-      item_id: byName("Onion").id,
-      location_id: kitchen.id,
-      reorder_threshold: 2,
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: crypto.randomUUID(),
-      item_id: byName("Milk").id,
-      location_id: fridge.id,
-      reorder_threshold: 1,
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: crypto.randomUUID(),
-      item_id: byName("Toothpaste").id,
-      location_id: bathroom.id,
-      reorder_threshold: 1,
-      created_at: now,
-      updated_at: now,
-    },
-  ];
-
-  const stockEntries: StockEntry[] = [
-    {
-      id: crypto.randomUUID(),
-      item_id: byName("Rice").id,
-      location_id: storeRoom.id,
-      quantity: 2,
-      unit: "kg",
-      counted_at: now,
-      stock_take_session_id: null,
-    },
-    {
-      id: crypto.randomUUID(),
-      item_id: byName("Toor Dal").id,
-      location_id: kitchen.id,
-      quantity: 0.5,
-      unit: "kg",
-      counted_at: now,
-      stock_take_session_id: null,
-    },
-    {
-      id: crypto.randomUUID(),
-      item_id: byName("Onion").id,
-      location_id: kitchen.id,
-      quantity: 1,
-      unit: "kg",
-      counted_at: now,
-      stock_take_session_id: null,
-    },
-    {
-      id: crypto.randomUUID(),
-      item_id: byName("Milk").id,
-      location_id: fridge.id,
-      quantity: 2,
-      unit: "litre",
-      counted_at: now,
-      stock_take_session_id: null,
-    },
-    {
-      id: crypto.randomUUID(),
-      item_id: byName("Toothpaste").id,
-      location_id: bathroom.id,
-      quantity: 1,
-      unit: "pcs",
-      counted_at: now,
-      stock_take_session_id: null,
-    },
-  ];
-
-  return {
-    locations,
-    categories,
-    items,
-    itemLocations,
-    stockEntries,
-    sessions: [],
-  };
+function mapLocation(row: Location): Location {
+  return { ...row, created_at: toIso(row.created_at) };
 }
 
-const db: Db = globalForStore.__stockStore ?? seed();
-globalForStore.__stockStore = db;
+function mapItem(row: Item): Item {
+  return { ...row, created_at: toIso(row.created_at), updated_at: toIso(row.updated_at) };
+}
 
-function nowIso() {
-  return new Date().toISOString();
+function mapItemLocation(row: ItemLocation): ItemLocation {
+  return { ...row, created_at: toIso(row.created_at), updated_at: toIso(row.updated_at) };
+}
+
+function mapSession(row: StockTakeSession): StockTakeSession {
+  return { ...row, started_at: toIso(row.started_at), completed_at: toIso(row.completed_at) };
+}
+
+function mapStockEntry(row: StockEntry): StockEntry {
+  return { ...row, counted_at: toIso(row.counted_at) };
 }
 
 // ---------------------------------------------------------------------------
 // Locations
 // ---------------------------------------------------------------------------
 
-export function listLocations(): Location[] {
-  return db.locations;
+export async function listLocations(): Promise<Location[]> {
+  const rows = await db.select().from(locations);
+  return rows.map(mapLocation);
 }
 
-export function getLocation(id: string): Location | undefined {
-  return db.locations.find((l) => l.id === id);
+export async function getLocation(id: string): Promise<Location | undefined> {
+  const [location] = await db.select().from(locations).where(eq(locations.id, id));
+  return location && mapLocation(location);
 }
 
-export function createLocation(input: { name: string; is_active?: boolean }): Location {
-  const location: Location = {
-    id: crypto.randomUUID(),
-    name: input.name,
-    is_active: input.is_active ?? true,
-  };
-  db.locations.push(location);
-  return location;
+export async function createLocation(input: { name: string; is_active?: boolean }): Promise<Location> {
+  const [location] = await db
+    .insert(locations)
+    .values({ name: input.name, is_active: input.is_active ?? true })
+    .returning();
+  return mapLocation(location);
 }
 
-export function updateLocation(
+export async function updateLocation(
   id: string,
   input: Partial<Pick<Location, "name" | "is_active">>
-): Location | undefined {
-  const location = getLocation(id);
-  if (!location) return undefined;
-  if (input.name !== undefined) location.name = input.name;
-  if (input.is_active !== undefined) location.is_active = input.is_active;
-  return location;
+): Promise<Location | undefined> {
+  const fields = definedFields(input);
+  if (Object.keys(fields).length === 0) return getLocation(id);
+  const [location] = await db.update(locations).set(fields).where(eq(locations.id, id)).returning();
+  return location && mapLocation(location);
 }
 
-export function deleteLocation(id: string): boolean {
-  const index = db.locations.findIndex((l) => l.id === id);
-  if (index === -1) return false;
-  db.locations.splice(index, 1);
-  return true;
+export async function deleteLocation(id: string): Promise<boolean> {
+  const deleted = await db.delete(locations).where(eq(locations.id, id)).returning({ id: locations.id });
+  return deleted.length > 0;
 }
 
 // ---------------------------------------------------------------------------
 // Categories
 // ---------------------------------------------------------------------------
 
-export function listCategories(): Category[] {
-  return db.categories;
+export async function listCategories(): Promise<Category[]> {
+  return db.select().from(categories);
 }
 
-export function createCategory(name: string): Category {
-  const category: Category = { id: crypto.randomUUID(), name };
-  db.categories.push(category);
+export async function createCategory(name: string): Promise<Category> {
+  const [category] = await db.insert(categories).values({ name }).returning();
   return category;
 }
 
-export function deleteCategory(id: string): boolean {
-  const index = db.categories.findIndex((c) => c.id === id);
-  if (index === -1) return false;
-  db.categories.splice(index, 1);
-  return true;
+export async function deleteCategory(id: string): Promise<boolean> {
+  const deleted = await db.delete(categories).where(eq(categories.id, id)).returning({ id: categories.id });
+  return deleted.length > 0;
 }
 
 // ---------------------------------------------------------------------------
 // Items
 // ---------------------------------------------------------------------------
 
-export function listItems(): Item[] {
-  return db.items;
+export async function listItems(): Promise<Item[]> {
+  const rows = await db.select().from(items);
+  return rows.map(mapItem);
 }
 
-export function getItem(id: string): Item | undefined {
-  return db.items.find((i) => i.id === id);
+export async function getItem(id: string): Promise<Item | undefined> {
+  const [item] = await db.select().from(items).where(eq(items.id, id));
+  return item && mapItem(item);
 }
 
-export function createItem(input: {
+export async function createItem(input: {
   name: string;
   category: string;
   unit: string;
   preferred_brand?: string | null;
   notes?: string | null;
   is_active?: boolean;
-}): Item {
-  const timestamp = nowIso();
-  const item: Item = {
-    id: crypto.randomUUID(),
-    name: input.name,
-    category: input.category,
-    unit: input.unit,
-    preferred_brand: input.preferred_brand ?? null,
-    notes: input.notes ?? null,
-    is_active: input.is_active ?? true,
-    created_at: timestamp,
-    updated_at: timestamp,
-  };
-  db.items.push(item);
-  return item;
+}): Promise<Item> {
+  const [item] = await db
+    .insert(items)
+    .values({
+      name: input.name,
+      category: input.category,
+      unit: input.unit,
+      preferred_brand: input.preferred_brand ?? null,
+      notes: input.notes ?? null,
+      is_active: input.is_active ?? true,
+    })
+    .returning();
+  return mapItem(item);
 }
 
-export function updateItem(
+export async function updateItem(
   id: string,
   input: Partial<
     Pick<Item, "name" | "category" | "unit" | "preferred_brand" | "notes" | "is_active">
   >
-): Item | undefined {
-  const item = getItem(id);
-  if (!item) return undefined;
-  Object.assign(item, input, { updated_at: nowIso() });
-  return item;
+): Promise<Item | undefined> {
+  const fields = definedFields(input);
+  const [item] = await db
+    .update(items)
+    .set({ ...fields, updated_at: sql`now()` })
+    .where(eq(items.id, id))
+    .returning();
+  return item && mapItem(item);
 }
 
-/** Removes the item along with its per-location thresholds and stock history. */
-export function deleteItem(id: string): boolean {
-  const index = db.items.findIndex((i) => i.id === id);
-  if (index === -1) return false;
-  db.items.splice(index, 1);
-  db.itemLocations = db.itemLocations.filter((il) => il.item_id !== id);
-  db.stockEntries = db.stockEntries.filter((e) => e.item_id !== id);
-  return true;
+/** Removes the item; its thresholds and stock history cascade-delete at the DB level. */
+export async function deleteItem(id: string): Promise<boolean> {
+  const deleted = await db.delete(items).where(eq(items.id, id)).returning({ id: items.id });
+  return deleted.length > 0;
 }
 
 // ---------------------------------------------------------------------------
 // Item-Location mappings (per-location reorder thresholds)
 // ---------------------------------------------------------------------------
 
-export function listItemLocations(): ItemLocation[] {
-  return db.itemLocations;
+export async function listItemLocations(): Promise<ItemLocation[]> {
+  const rows = await db.select().from(itemLocationThresholds);
+  return rows.map(mapItemLocation);
 }
 
-export function getItemLocation(itemId: string, locationId: string): ItemLocation | undefined {
-  return db.itemLocations.find((il) => il.item_id === itemId && il.location_id === locationId);
+export async function getItemLocation(
+  itemId: string,
+  locationId: string
+): Promise<ItemLocation | undefined> {
+  const [row] = await db
+    .select()
+    .from(itemLocationThresholds)
+    .where(
+      and(eq(itemLocationThresholds.item_id, itemId), eq(itemLocationThresholds.location_id, locationId))
+    );
+  return row && mapItemLocation(row);
 }
 
 /** Creates the mapping if absent, otherwise updates its reorder threshold. */
-export function upsertItemLocation(input: {
+export async function upsertItemLocation(input: {
   item_id: string;
   location_id: string;
   reorder_threshold: number;
-}): ItemLocation {
-  const existing = getItemLocation(input.item_id, input.location_id);
-  if (existing) {
-    existing.reorder_threshold = input.reorder_threshold;
-    existing.updated_at = nowIso();
-    return existing;
-  }
-  const timestamp = nowIso();
-  const itemLocation: ItemLocation = {
-    id: crypto.randomUUID(),
-    item_id: input.item_id,
-    location_id: input.location_id,
-    reorder_threshold: input.reorder_threshold,
-    created_at: timestamp,
-    updated_at: timestamp,
-  };
-  db.itemLocations.push(itemLocation);
-  return itemLocation;
+}): Promise<ItemLocation> {
+  const [row] = await db
+    .insert(itemLocationThresholds)
+    .values({
+      item_id: input.item_id,
+      location_id: input.location_id,
+      reorder_threshold: input.reorder_threshold,
+    })
+    .onConflictDoUpdate({
+      target: [itemLocationThresholds.item_id, itemLocationThresholds.location_id],
+      set: { reorder_threshold: input.reorder_threshold, updated_at: sql`now()` },
+    })
+    .returning();
+  return mapItemLocation(row);
 }
 
 /** Unsets the threshold for an item/location pair (it simply won't be tracked for alerts). */
-export function deleteItemLocation(itemId: string, locationId: string): boolean {
-  const index = db.itemLocations.findIndex(
-    (il) => il.item_id === itemId && il.location_id === locationId
-  );
-  if (index === -1) return false;
-  db.itemLocations.splice(index, 1);
-  return true;
+export async function deleteItemLocation(itemId: string, locationId: string): Promise<boolean> {
+  const deleted = await db
+    .delete(itemLocationThresholds)
+    .where(
+      and(eq(itemLocationThresholds.item_id, itemId), eq(itemLocationThresholds.location_id, locationId))
+    )
+    .returning({ id: itemLocationThresholds.id });
+  return deleted.length > 0;
 }
 
 // ---------------------------------------------------------------------------
 // Stock entries
 // ---------------------------------------------------------------------------
 
-export function listStockEntries(): StockEntry[] {
-  return db.stockEntries;
+export async function listStockEntries(): Promise<StockEntry[]> {
+  const rows = await db.select().from(stockEntries);
+  return rows.map(mapStockEntry);
 }
 
-export function listStockEntriesBySession(sessionId: string): StockEntry[] {
-  return db.stockEntries.filter((e) => e.stock_take_session_id === sessionId);
+export async function listStockEntriesBySession(sessionId: string): Promise<StockEntry[]> {
+  const rows = await db
+    .select()
+    .from(stockEntries)
+    .where(eq(stockEntries.stock_take_session_id, sessionId));
+  return rows.map(mapStockEntry);
 }
 
-export function createStockEntry(input: {
+export async function createStockEntry(input: {
   item_id: string;
   location_id: string;
   quantity: number;
   unit: string;
   counted_at?: string;
   stock_take_session_id?: string | null;
-}): StockEntry {
-  const entry: StockEntry = {
-    id: crypto.randomUUID(),
-    item_id: input.item_id,
-    location_id: input.location_id,
-    quantity: input.quantity,
-    unit: input.unit,
-    counted_at: input.counted_at ?? nowIso(),
-    stock_take_session_id: input.stock_take_session_id ?? null,
-  };
-  db.stockEntries.push(entry);
-  return entry;
+}): Promise<StockEntry> {
+  const [entry] = await db
+    .insert(stockEntries)
+    .values({
+      item_id: input.item_id,
+      location_id: input.location_id,
+      quantity: input.quantity,
+      unit: input.unit,
+      counted_at: input.counted_at ?? undefined,
+      stock_take_session_id: input.stock_take_session_id ?? null,
+    })
+    .returning();
+  return mapStockEntry(entry);
 }
 
 // ---------------------------------------------------------------------------
 // Stock take sessions
 // ---------------------------------------------------------------------------
 
-export function listSessions(): StockTakeSession[] {
-  return db.sessions;
+export async function listSessions(): Promise<StockTakeSession[]> {
+  const rows = await db.select().from(stockTakeSessions);
+  return rows.map(mapSession);
 }
 
-export function getSession(id: string): StockTakeSession | undefined {
-  return db.sessions.find((s) => s.id === id);
+export async function getSession(id: string): Promise<StockTakeSession | undefined> {
+  const [session] = await db.select().from(stockTakeSessions).where(eq(stockTakeSessions.id, id));
+  return session && mapSession(session);
 }
 
-/** location_id null means the session sweeps all active locations rather than one. */
-export function createSession(input: {
+/** location_id null means the session sweeps all locations rather than one. */
+export async function createSession(input: {
   location_id?: string | null;
   notes?: string | null;
-}): StockTakeSession {
-  const session: StockTakeSession = {
-    id: crypto.randomUUID(),
-    location_id: input.location_id ?? null,
-    started_at: nowIso(),
-    completed_at: null,
-    notes: input.notes ?? null,
-  };
-  db.sessions.push(session);
-  return session;
+}): Promise<StockTakeSession> {
+  const [session] = await db
+    .insert(stockTakeSessions)
+    .values({ location_id: input.location_id ?? null, notes: input.notes ?? null })
+    .returning();
+  return mapSession(session);
 }
 
-export function updateSession(
+export async function updateSession(
   id: string,
   input: Partial<Pick<StockTakeSession, "notes" | "completed_at">>
-): StockTakeSession | undefined {
-  const session = getSession(id);
-  if (!session) return undefined;
-  if (input.notes !== undefined) session.notes = input.notes;
-  if (input.completed_at !== undefined) session.completed_at = input.completed_at;
-  return session;
+): Promise<StockTakeSession | undefined> {
+  const fields = definedFields(input);
+  if (Object.keys(fields).length === 0) return getSession(id);
+  const [session] = await db
+    .update(stockTakeSessions)
+    .set(fields)
+    .where(eq(stockTakeSessions.id, id))
+    .returning();
+  return session && mapSession(session);
 }
 
-export function completeSession(id: string): StockTakeSession | undefined {
-  return updateSession(id, { completed_at: nowIso() });
+export async function completeSession(id: string): Promise<StockTakeSession | undefined> {
+  const [session] = await db
+    .update(stockTakeSessions)
+    .set({ completed_at: sql`now()` })
+    .where(eq(stockTakeSessions.id, id))
+    .returning();
+  return session && mapSession(session);
 }
 
 // ---------------------------------------------------------------------------
 // Derived views
 // ---------------------------------------------------------------------------
 
-/** Latest stock quantity per item/location. reorder_threshold is null where no threshold has been set. */
-export function computeStockLevels(): StockLevel[] {
-  const latestByKey = new Map<string, StockEntry>();
-
-  for (const entry of db.stockEntries) {
-    const key = `${entry.item_id}::${entry.location_id}`;
-    const current = latestByKey.get(key);
-    if (!current || new Date(entry.counted_at) > new Date(current.counted_at)) {
-      latestByKey.set(key, entry);
-    }
-  }
-
-  const levels: StockLevel[] = [];
-  for (const [key, entry] of latestByKey) {
-    const [item_id, location_id] = key.split("::");
-    const override = getItemLocation(item_id, location_id);
-    levels.push({
-      item_id,
-      location_id,
-      quantity: entry.quantity,
-      reorder_threshold: override?.reorder_threshold ?? null,
-      last_counted_at: entry.counted_at,
-    });
-  }
-  return levels;
-}
-
-/** Stock levels at or below their reorder threshold. Pairs with no threshold set are never alerts. */
-export function computeAlerts(): StockLevel[] {
-  return computeStockLevels().filter(
-    (level) => level.reorder_threshold !== null && level.quantity <= level.reorder_threshold
-  );
-}
-
-/** Most recent completed-session timestamp per location (sessions scoped to "all locations" count for every active location). */
-export function computeLastStockTakeByLocation(): Record<string, string | undefined> {
-  const result: Record<string, string | undefined> = {};
-  for (const location of db.locations) {
-    const relevant = db.sessions.filter(
-      (s) => s.completed_at && (s.location_id === location.id || s.location_id === null)
-    );
-    const latest = relevant.reduce<string | undefined>((acc, s) => {
-      if (!s.completed_at) return acc;
-      return !acc || new Date(s.completed_at) > new Date(acc) ? s.completed_at : acc;
-    }, undefined);
-    result[location.id] = latest;
-  }
-  return result;
+/** Latest stock quantity per item/location, with the effective reorder threshold (null if unset). */
+export async function computeStockLevels(): Promise<StockLevel[]> {
+  const result = await db.execute<{
+    item_id: string;
+    location_id: string;
+    quantity: number;
+    last_counted_at: string;
+    reorder_threshold: number | null;
+  }>(sql`
+    select distinct on (se.item_id, se.location_id)
+      se.item_id as item_id,
+      se.location_id as location_id,
+      se.quantity::float8 as quantity,
+      to_json(se.counted_at) #>> '{}' as last_counted_at,
+      ilt.reorder_threshold::float8 as reorder_threshold
+    from stock_entries se
+    left join item_location_thresholds ilt
+      on ilt.item_id = se.item_id and ilt.location_id = se.location_id
+    order by se.item_id, se.location_id, se.counted_at desc
+  `);
+  return result.rows;
 }

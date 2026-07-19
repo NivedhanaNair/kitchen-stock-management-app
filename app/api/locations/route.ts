@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createLocation, listLocations } from "@/lib/store";
 
 export async function GET() {
-  return NextResponse.json(listLocations());
+  return NextResponse.json(await listLocations());
 }
 
 export async function POST(request: NextRequest) {
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
 
-  const location = createLocation({
+  const location = await createLocation({
     name: body.name,
     is_active: body.is_active,
   });

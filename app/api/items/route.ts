@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createItem, listItems } from "@/lib/store";
 
 export async function GET() {
-  return NextResponse.json(listItems());
+  return NextResponse.json(await listItems());
 }
 
 export async function POST(request: NextRequest) {
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unit is required" }, { status: 400 });
   }
 
-  const item = createItem({
+  const item = await createItem({
     name: body.name,
     category: body.category,
     unit: body.unit,

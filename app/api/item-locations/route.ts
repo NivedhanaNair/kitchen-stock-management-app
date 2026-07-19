@@ -8,16 +8,16 @@ import {
 } from "@/lib/store";
 
 export async function GET() {
-  return NextResponse.json(listItemLocations());
+  return NextResponse.json(await listItemLocations());
 }
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
 
-  if (typeof body.item_id !== "string" || !getItem(body.item_id)) {
+  if (typeof body.item_id !== "string" || !(await getItem(body.item_id))) {
     return NextResponse.json({ error: "item_id must reference an existing item" }, { status: 400 });
   }
-  if (typeof body.location_id !== "string" || !getLocation(body.location_id)) {
+  if (typeof body.location_id !== "string" || !(await getLocation(body.location_id))) {
     return NextResponse.json(
       { error: "location_id must reference an existing location" },
       { status: 400 }
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "reorder_threshold must be a number" }, { status: 400 });
   }
 
-  const itemLocation = upsertItemLocation({
+  const itemLocation = await upsertItemLocation({
     item_id: body.item_id,
     location_id: body.location_id,
     reorder_threshold: body.reorder_threshold,
@@ -48,7 +48,7 @@ export async function DELETE(request: NextRequest) {
     );
   }
 
-  const deleted = deleteItemLocation(itemId, locationId);
+  const deleted = await deleteItemLocation(itemId, locationId);
   if (!deleted) {
     return NextResponse.json({ error: "No threshold set for that pair" }, { status: 404 });
   }

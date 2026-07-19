@@ -7,7 +7,7 @@ interface Params {
 
 export async function GET(_request: NextRequest, { params }: Params) {
   const { id } = await params;
-  const item = getItem(id);
+  const item = await getItem(id);
   if (!item) {
     return NextResponse.json({ error: "Item not found" }, { status: 404 });
   }
@@ -22,7 +22,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "name must be a non-empty string" }, { status: 400 });
   }
 
-  const item = updateItem(id, {
+  const item = await updateItem(id, {
     name: body.name,
     category: body.category,
     unit: body.unit,
@@ -40,7 +40,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
 export async function DELETE(_request: NextRequest, { params }: Params) {
   const { id } = await params;
-  const deleted = deleteItem(id);
+  const deleted = await deleteItem(id);
   if (!deleted) {
     return NextResponse.json({ error: "Item not found" }, { status: 404 });
   }

@@ -7,7 +7,7 @@ interface Params {
 
 export async function GET(_request: NextRequest, { params }: Params) {
   const { id } = await params;
-  const session = getSession(id);
+  const session = await getSession(id);
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
@@ -18,7 +18,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const { id } = await params;
   const body = await request.json();
 
-  const session = body.complete === true ? completeSession(id) : updateSession(id, { notes: body.notes });
+  const session = body.complete === true ? await completeSession(id) : await updateSession(id, { notes: body.notes });
 
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });

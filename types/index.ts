@@ -2,6 +2,7 @@ export interface Location {
   id: string;
   name: string;
   is_active: boolean;
+  created_at: string;
 }
 
 export interface Category {

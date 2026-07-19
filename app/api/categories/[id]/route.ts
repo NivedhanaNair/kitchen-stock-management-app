@@ -7,7 +7,7 @@ interface Params {
 
 export async function DELETE(_request: NextRequest, { params }: Params) {
   const { id } = await params;
-  const deleted = deleteCategory(id);
+  const deleted = await deleteCategory(id);
   if (!deleted) {
     return NextResponse.json({ error: "Category not found" }, { status: 404 });
   }

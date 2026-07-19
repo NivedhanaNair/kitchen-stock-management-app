@@ -7,7 +7,7 @@ interface Params {
 
 export async function GET(_request: NextRequest, { params }: Params) {
   const { id } = await params;
-  const location = getLocation(id);
+  const location = await getLocation(id);
   if (!location) {
     return NextResponse.json({ error: "Location not found" }, { status: 404 });
   }
@@ -22,7 +22,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "name must be a non-empty string" }, { status: 400 });
   }
 
-  const location = updateLocation(id, {
+  const location = await updateLocation(id, {
     name: body.name,
     is_active: body.is_active,
   });
@@ -36,7 +36,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
 export async function DELETE(_request: NextRequest, { params }: Params) {
   const { id } = await params;
-  const deleted = deleteLocation(id);
+  const deleted = await deleteLocation(id);
   if (!deleted) {
     return NextResponse.json({ error: "Location not found" }, { status: 404 });
   }
