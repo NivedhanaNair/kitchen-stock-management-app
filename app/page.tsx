@@ -2,28 +2,31 @@
 
 import { useState } from "react";
 import Header from "@/components/Header";
-import LocationManager from "@/components/LocationManager";
 import ItemManager from "@/components/ItemManager";
 import StockTaker from "@/components/StockTaker";
 import Dashboard from "@/components/Dashboard";
+import ShoppingList from "@/components/ShoppingList";
+import SettingsPage from "@/components/SettingsPage";
 
 const TABS = [
-  { key: "alerts", label: "Alerts" },
-  { key: "locations", label: "Locations" },
+  { key: "dashboard", label: "Dashboard" },
   { key: "items", label: "Items" },
   { key: "stock-take", label: "Stock Take" },
+  { key: "shopping-list", label: "Shopping List" },
+  { key: "settings", label: "Settings" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<TabKey>("alerts");
+  const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
+  const [thresholdFocusItemId, setThresholdFocusItemId] = useState<string | null>(null);
 
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">
-        <nav className="mb-8 inline-flex gap-1 rounded-xl border border-border bg-surface-muted p-1">
+        <nav className="mb-8 inline-flex flex-wrap gap-1 rounded-xl border border-border bg-surface-muted p-1">
           {TABS.map((tab) => (
             <button
               key={tab.key}
@@ -39,10 +42,18 @@ export default function Home() {
           ))}
         </nav>
 
-        {activeTab === "alerts" && <Dashboard />}
-        {activeTab === "locations" && <LocationManager />}
-        {activeTab === "items" && <ItemManager />}
+        {activeTab === "dashboard" && <Dashboard onNavigate={setActiveTab} />}
+        {activeTab === "items" && (
+          <ItemManager
+            onManageThresholds={(itemId) => {
+              setThresholdFocusItemId(itemId);
+              setActiveTab("settings");
+            }}
+          />
+        )}
         {activeTab === "stock-take" && <StockTaker />}
+        {activeTab === "shopping-list" && <ShoppingList />}
+        {activeTab === "settings" && <SettingsPage focusItemId={thresholdFocusItemId} />}
       </main>
     </div>
   );

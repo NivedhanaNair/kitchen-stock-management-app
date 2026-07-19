@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getItem, getLocation, listItemLocations, upsertItemLocation } from "@/lib/store";
+import {
+  deleteItemLocation,
+  getItem,
+  getLocation,
+  listItemLocations,
+  upsertItemLocation,
+} from "@/lib/store";
 
 export async function GET() {
   return NextResponse.json(listItemLocations());
@@ -28,4 +34,23 @@ export async function POST(request: NextRequest) {
   });
 
   return NextResponse.json(itemLocation, { status: 201 });
+}
+
+/** Unsets a threshold for an item/location pair. Query params: item_id, location_id. */
+export async function DELETE(request: NextRequest) {
+  const itemId = request.nextUrl.searchParams.get("item_id");
+  const locationId = request.nextUrl.searchParams.get("location_id");
+
+  if (!itemId || !locationId) {
+    return NextResponse.json(
+      { error: "item_id and location_id query params are required" },
+      { status: 400 }
+    );
+  }
+
+  const deleted = deleteItemLocation(itemId, locationId);
+  if (!deleted) {
+    return NextResponse.json({ error: "No threshold set for that pair" }, { status: 404 });
+  }
+  return NextResponse.json({ success: true });
 }

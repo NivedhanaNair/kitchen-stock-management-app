@@ -17,15 +17,6 @@ export async function POST(request: NextRequest) {
   if (typeof body.unit !== "string" || body.unit.trim() === "") {
     return NextResponse.json({ error: "unit is required" }, { status: 400 });
   }
-  if (
-    typeof body.default_reorder_threshold !== "number" ||
-    Number.isNaN(body.default_reorder_threshold)
-  ) {
-    return NextResponse.json(
-      { error: "default_reorder_threshold must be a number" },
-      { status: 400 }
-    );
-  }
 
   const item = createItem({
     name: body.name,
@@ -34,7 +25,6 @@ export async function POST(request: NextRequest) {
     preferred_brand: body.preferred_brand ?? null,
     notes: body.notes ?? null,
     is_active: body.is_active,
-    default_reorder_threshold: body.default_reorder_threshold,
   });
 
   return NextResponse.json(item, { status: 201 });

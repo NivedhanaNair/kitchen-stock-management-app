@@ -4,6 +4,11 @@ export interface Location {
   is_active: boolean;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+}
+
 export interface Item {
   id: string;
   name: string;
@@ -14,9 +19,9 @@ export interface Item {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  default_reorder_threshold: number;
 }
 
+/** Reorder threshold for one item at one location. No row = no threshold set for that pair. */
 export interface ItemLocation {
   id: string;
   item_id: string;
@@ -38,17 +43,18 @@ export interface StockEntry {
 
 export interface StockTakeSession {
   id: string;
-  location_id: string;
+  /** Null when the session spans all locations rather than being scoped to one. */
+  location_id: string | null;
   started_at: string;
   completed_at: string | null;
   notes: string | null;
 }
 
-/** Latest known quantity for an item at a location, plus the effective reorder threshold. */
+/** Latest known quantity for an item at a location. reorder_threshold is null when no threshold has been set for that pair. */
 export interface StockLevel {
   item_id: string;
   location_id: string;
   quantity: number;
-  reorder_threshold: number;
+  reorder_threshold: number | null;
   last_counted_at: string | null;
 }
