@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Header from "@/components/Header";
+import SideNav from "@/components/SideNav";
 import ItemManager from "@/components/ItemManager";
 import StockOverview from "@/components/StockOverview";
 import StockTaker from "@/components/StockTaker";
@@ -23,26 +24,29 @@ type TabKey = (typeof TABS)[number]["key"];
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
   const [thresholdFocusItemId, setThresholdFocusItemId] = useState<string | null>(null);
+  const [navOpen, setNavOpen] = useState(false);
+
+  useEffect(() => {
+    document.body.style.overflow = navOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [navOpen]);
+
+  const activeTabLabel = TABS.find((tab) => tab.key === activeTab)?.label ?? "";
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Header />
+      <Header onMenuClick={() => setNavOpen(true)} />
+      <SideNav
+        tabs={TABS}
+        activeTab={activeTab}
+        onSelect={(key) => setActiveTab(key as TabKey)}
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
+      />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
-        <nav className="mb-6 -mx-4 flex gap-1 overflow-x-auto rounded-none border-y border-border bg-surface-muted p-1 px-4 sm:mx-0 sm:mb-8 sm:rounded-xl sm:border sm:px-1">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`shrink-0 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors sm:py-1.5 ${
-                activeTab === tab.key
-                  ? "bg-surface text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
+        <h2 className="mb-4 text-lg font-semibold text-foreground sm:mb-6">{activeTabLabel}</h2>
 
         {activeTab === "dashboard" && <Dashboard onNavigate={setActiveTab} />}
         {activeTab === "items" && (

@@ -45,13 +45,13 @@ export default function StockOverview() {
       result = result.filter((i) => i.category === categoryFilter);
     }
 
-    const hasStock = (item: Item) => stockLevels.some((l) => l.item_id === item.id);
+    const totalQuantity = (item: Item) =>
+      stockLevels.filter((l) => l.item_id === item.id).reduce((sum, l) => sum + l.quantity, 0);
 
     return result.slice().sort((a, b) => {
-      const aHasStock = hasStock(a);
-      const bHasStock = hasStock(b);
-      if (aHasStock !== bHasStock) return aHasStock ? -1 : 1;
-      return a.category.localeCompare(b.category) || a.name.localeCompare(b.name);
+      const diff = totalQuantity(a) - totalQuantity(b);
+      if (diff !== 0) return diff;
+      return a.name.localeCompare(b.name);
     });
   }, [items, stockLevels, search, categoryFilter]);
 

@@ -32,6 +32,7 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [addFormOpen, setAddFormOpen] = useState(false);
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -229,55 +230,69 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
         ))}
       </datalist>
 
-      <form onSubmit={handleSubmit} className="card grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
-        <input
-          type="text"
-          placeholder="Name"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          className="input-field"
-        />
-        <input
-          type="text"
-          list="category-options"
-          placeholder="Category"
-          value={form.category}
-          onChange={(e) => setForm({ ...form, category: e.target.value })}
-          className="input-field"
-        />
-        <input
-          type="text"
-          list="unit-options"
-          placeholder="Unit (e.g. kg, litre, pcs)"
-          value={form.unit}
-          onChange={(e) => setForm({ ...form, unit: e.target.value })}
-          className="input-field"
-        />
-        <input
-          type="text"
-          placeholder="Preferred brand (optional)"
-          value={form.preferred_brand}
-          onChange={(e) => setForm({ ...form, preferred_brand: e.target.value })}
-          className="input-field"
-        />
-        <input
-          type="number"
-          placeholder="Reorder threshold (optional, checked against total stock)"
-          value={form.default_reorder_threshold}
-          onChange={(e) => setForm({ ...form, default_reorder_threshold: e.target.value })}
-          className="input-field"
-        />
-        <input
-          type="text"
-          placeholder="Notes (optional)"
-          value={form.notes}
-          onChange={(e) => setForm({ ...form, notes: e.target.value })}
-          className="input-field"
-        />
-        <button type="submit" className="btn-primary col-span-full">
-          Add Item
+      <div className="card">
+        <button
+          onClick={() => setAddFormOpen((open) => !open)}
+          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-foreground"
+        >
+          <span>Add Item</span>
+          <span className="text-muted-foreground">{addFormOpen ? "−" : "+"}</span>
         </button>
-      </form>
+        {addFormOpen && (
+          <form
+            onSubmit={handleSubmit}
+            className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-2"
+          >
+            <input
+              type="text"
+              placeholder="Name"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              className="input-field"
+            />
+            <input
+              type="text"
+              list="category-options"
+              placeholder="Category"
+              value={form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
+              className="input-field"
+            />
+            <input
+              type="text"
+              list="unit-options"
+              placeholder="Unit (e.g. kg, litre, pcs)"
+              value={form.unit}
+              onChange={(e) => setForm({ ...form, unit: e.target.value })}
+              className="input-field"
+            />
+            <input
+              type="text"
+              placeholder="Preferred brand (optional)"
+              value={form.preferred_brand}
+              onChange={(e) => setForm({ ...form, preferred_brand: e.target.value })}
+              className="input-field"
+            />
+            <input
+              type="number"
+              placeholder="Reorder threshold (optional, checked against total stock)"
+              value={form.default_reorder_threshold}
+              onChange={(e) => setForm({ ...form, default_reorder_threshold: e.target.value })}
+              className="input-field"
+            />
+            <input
+              type="text"
+              placeholder="Notes (optional)"
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              className="input-field"
+            />
+            <button type="submit" className="btn-primary col-span-full">
+              Add Item
+            </button>
+          </form>
+        )}
+      </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
