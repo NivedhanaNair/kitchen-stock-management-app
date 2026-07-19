@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Header from "@/components/Header";
 import ItemManager from "@/components/ItemManager";
+import StockOverview from "@/components/StockOverview";
 import StockTaker from "@/components/StockTaker";
 import Dashboard from "@/components/Dashboard";
 import ShoppingList from "@/components/ShoppingList";
@@ -11,6 +12,7 @@ import SettingsPage from "@/components/SettingsPage";
 const TABS = [
   { key: "dashboard", label: "Dashboard" },
   { key: "items", label: "Items" },
+  { key: "stock", label: "Stock" },
   { key: "stock-take", label: "Stock Take" },
   { key: "shopping-list", label: "Shopping List" },
   { key: "settings", label: "Settings" },
@@ -51,6 +53,7 @@ export default function Home() {
             }}
           />
         )}
+        {activeTab === "stock" && <StockOverview />}
         {activeTab === "stock-take" && <StockTaker />}
         {activeTab === "shopping-list" && <ShoppingList />}
         {activeTab === "settings" && <SettingsPage focusItemId={thresholdFocusItemId} />}
