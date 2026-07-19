@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f5f0;
+  --surface: #ffffff;
+  --surface-muted: #f1efe7;
+  --foreground: #2b2925;
+  --muted-foreground: #7a756b;
+  --border: #e6e2d6;
+  --accent: #c96442;
+  --accent-hover: #b35435;
+  --accent-soft: #f3e3da;
+  --accent-soft-foreground: #9a4a2e;
+  --success: #4d7c5f;
+  --success-soft: #e2ede4;
+  --warning: #b8853a;
+  --warning-soft: #f7ecd9;
+  --danger: #b3432f;
+  --danger-soft: #f6e2dd;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-foreground: var(--accent-soft-foreground);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #262523;
+    --surface: #302e2a;
+    --surface-muted: #3a3733;
+    --foreground: #f2efe8;
+    --muted-foreground: #a19a8d;
+    --border: #423f39;
+    --accent: #e08a68;
+    --accent-hover: #e89b7c;
+    --accent-soft: #4a352c;
+    --accent-soft-foreground: #f0b294;
+    --success: #83b598;
+    --success-soft: #2e3b32;
+    --warning: #d9a75f;
+    --warning-soft: #3d3323;
+    --danger: #d9806c;
+    --danger-soft: #3d2b26;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-border bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.04)];
+  }
+
+  .btn-primary {
+    @apply rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-danger {
+    @apply rounded-lg border border-danger/30 bg-surface px-3 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger-soft;
+  }
+
+  .input-field {
+    @apply rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15;
+  }
+
+  .field-label {
+    @apply text-xs font-medium text-muted-foreground;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .section-title {
+    @apply text-sm font-semibold text-foreground;
+  }
+
+  .eyebrow {
+    @apply text-xs font-medium uppercase tracking-wide text-muted-foreground;
+  }
+}
