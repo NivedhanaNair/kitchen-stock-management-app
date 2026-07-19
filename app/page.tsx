@@ -27,13 +27,13 @@ export default function Home() {
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">
-        <nav className="mb-8 inline-flex flex-wrap gap-1 rounded-xl border border-border bg-surface-muted p-1">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
+        <nav className="mb-6 -mx-4 flex gap-1 overflow-x-auto rounded-none border-y border-border bg-surface-muted p-1 px-4 sm:mx-0 sm:mb-8 sm:rounded-xl sm:border sm:px-1">
           {TABS.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
+              className={`shrink-0 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors sm:py-1.5 ${
                 activeTab === tab.key
                   ? "bg-surface text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"

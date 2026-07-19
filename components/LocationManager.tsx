@@ -86,7 +86,7 @@ export default function LocationManager() {
       ) : (
         <ul className="card divide-y divide-border">
           {locations.map((location) => (
-            <li key={location.id} className="flex items-center justify-between px-4 py-3">
+            <li key={location.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-foreground">{location.name}</span>
                 <span

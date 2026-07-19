@@ -401,7 +401,7 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium text-foreground">{item.name}</span>
@@ -438,8 +438,8 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
                         <p className="mt-1 text-xs text-muted-foreground">No stock counted yet.</p>
                       )}
                     </div>
-                    <div className="flex shrink-0 flex-col items-end gap-2">
-                      <div className="flex gap-2">
+                    <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+                      <div className="flex flex-wrap gap-2">
                         <button onClick={() => startEdit(item)} className="btn-secondary">
                           Edit
                         </button>

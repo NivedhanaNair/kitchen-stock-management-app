@@ -308,12 +308,12 @@ export default function StockTaker() {
           <h3 className="section-title">Stock Take Summary</h3>
           <ul className="divide-y divide-border">
             {summary.map((row) => (
-              <li key={`${row.itemId}::${row.locationId}`} className="flex items-center justify-between py-2 text-sm">
+              <li key={`${row.itemId}::${row.locationId}`} className="flex flex-col gap-1 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <span className="font-medium text-foreground">{itemName(row.itemId)}</span>{" "}
                   <span className="text-muted-foreground">at {locationName(row.locationId)}</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span className="text-muted-foreground">
                     {row.prevQty ?? "—"} &rarr; {row.newQty}
                   </span>
@@ -437,7 +437,7 @@ export default function StockTaker() {
                     return (
                       <div
                         key={location.id}
-                        className={`flex items-center gap-1 rounded-lg border px-2 py-1 ${
+                        className={`flex items-center gap-1 rounded-lg border px-1.5 py-1.5 ${
                           logged
                             ? "border-success/30 bg-success-soft"
                             : skipped
@@ -450,7 +450,7 @@ export default function StockTaker() {
                         )}
                         <button
                           onClick={() => step(item.id, location.id, -1)}
-                          className="rounded px-1.5 text-sm text-muted-foreground hover:bg-surface-muted"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded text-base text-muted-foreground hover:bg-surface-muted active:bg-surface-muted"
                           aria-label="Decrease"
                         >
                           &minus;
@@ -461,11 +461,11 @@ export default function StockTaker() {
                           placeholder={prevQty !== null ? String(prevQty) : "0"}
                           onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
                           onBlur={(e) => commitQuantity(item.id, location.id, e.target.value)}
-                          className="w-14 border-0 bg-transparent text-center text-sm text-foreground focus:outline-none"
+                          className="w-16 border-0 bg-transparent text-center text-base text-foreground focus:outline-none"
                         />
                         <button
                           onClick={() => step(item.id, location.id, 1)}
-                          className="rounded px-1.5 text-sm text-muted-foreground hover:bg-surface-muted"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded text-base text-muted-foreground hover:bg-surface-muted active:bg-surface-muted"
                           aria-label="Increase"
                         >
                           +
@@ -473,15 +473,16 @@ export default function StockTaker() {
                         {prevQty !== null && (
                           <button
                             onClick={() => quickFillLastTime(item.id, location.id)}
-                            className="text-xs text-accent hover:underline"
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded text-base text-accent hover:bg-surface-muted"
                             title={`Same as last time (${prevQty})`}
+                            aria-label="Same as last time"
                           >
                             ↺
                           </button>
                         )}
                         <button
                           onClick={() => toggleSkip(item.id, location.id)}
-                          className="text-xs text-muted-foreground hover:text-foreground"
+                          className="h-9 shrink-0 whitespace-nowrap rounded px-2 text-xs text-muted-foreground hover:bg-surface-muted hover:text-foreground"
                         >
                           {skipped ? "Unskip" : "Skip"}
                         </button>

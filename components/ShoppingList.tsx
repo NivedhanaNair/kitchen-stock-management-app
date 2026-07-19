@@ -238,22 +238,27 @@ export default function ShoppingList() {
                 {rows.map((row) => {
                   const shortBy = row.threshold - row.quantity;
                   return (
-                    <li key={row.key} className="flex items-center gap-3 px-4 py-3 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={bought[row.key] ?? false}
-                        onChange={() => toggleBought(row.key)}
-                        className="h-4 w-4 accent-accent"
-                      />
-                      <div className={`flex-1 ${bought[row.key] ? "text-muted-foreground line-through" : ""}`}>
-                        <span className="font-medium text-foreground">{itemName(row.itemId)}</span>{" "}
-                        <span className="text-muted-foreground">
-                          {row.locationId ? `at ${locationName(row.locationId)}` : "(total across locations)"}
+                    <li key={row.key}>
+                      <button
+                        onClick={() => toggleBought(row.key)}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm active:bg-surface-muted"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={bought[row.key] ?? false}
+                          readOnly
+                          className="h-5 w-5 shrink-0 accent-accent"
+                        />
+                        <div className={`flex-1 ${bought[row.key] ? "text-muted-foreground line-through" : ""}`}>
+                          <span className="font-medium text-foreground">{itemName(row.itemId)}</span>{" "}
+                          <span className="text-muted-foreground">
+                            {row.locationId ? `at ${locationName(row.locationId)}` : "(total across locations)"}
+                          </span>
+                        </div>
+                        <span className="text-xs text-warning">
+                          have {row.quantity} · need {row.threshold} · short {shortBy}
                         </span>
-                      </div>
-                      <span className="text-xs text-warning">
-                        have {row.quantity} · need {row.threshold} · short {shortBy}
-                      </span>
+                      </button>
                     </li>
                   );
                 })}
@@ -267,18 +272,20 @@ export default function ShoppingList() {
               <ul className="card divide-y divide-border">
                 {manualEntries.map((entry) => (
                   <li key={entry.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={entry.bought}
-                      onChange={() => toggleManualBought(entry.id)}
-                      className="h-4 w-4 accent-accent"
-                    />
-                    <span className={`flex-1 ${entry.bought ? "text-muted-foreground line-through" : "text-foreground"}`}>
-                      {entry.text}
-                    </span>
+                    <label className="flex flex-1 cursor-pointer items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={entry.bought}
+                        onChange={() => toggleManualBought(entry.id)}
+                        className="h-5 w-5 shrink-0 accent-accent"
+                      />
+                      <span className={entry.bought ? "text-muted-foreground line-through" : "text-foreground"}>
+                        {entry.text}
+                      </span>
+                    </label>
                     <button
                       onClick={() => removeManualEntry(entry.id)}
-                      className="text-xs font-medium text-danger hover:underline"
+                      className="shrink-0 rounded px-2 py-1.5 text-xs font-medium text-danger hover:underline"
                     >
                       Remove
                     </button>
