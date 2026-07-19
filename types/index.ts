@@ -39,6 +39,14 @@ export interface ItemLocation {
   updated_at: string;
 }
 
+/** A family member account. Everyone shares the same household data — this is only for
+ *  login identity and attributing who logged which stock count. */
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface StockEntry {
   id: string;
   item_id: string;
@@ -47,6 +55,7 @@ export interface StockEntry {
   unit: string;
   counted_at: string;
   stock_take_session_id: string | null;
+  created_by: string | null;
 }
 
 export interface StockTakeSession {
@@ -56,6 +65,7 @@ export interface StockTakeSession {
   started_at: string;
   completed_at: string | null;
   notes: string | null;
+  created_by: string | null;
 }
 
 /** Latest known quantity for an item at a location. reorder_threshold is null when no threshold has been set for that pair. */

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Item, ItemStockStatus, Location, StockEntry, StockTakeSession } from "@/types";
+import type { Item, ItemStockStatus, Location, StockEntry, StockTakeSession, User } from "@/types";
 
 interface DashboardProps {
   onNavigate?: (tab: "items" | "stock-take" | "shopping-list") => void;
@@ -10,6 +10,7 @@ interface DashboardProps {
 export default function Dashboard({ onNavigate }: DashboardProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [stockStatuses, setStockStatuses] = useState<ItemStockStatus[]>([]);
   const [sessions, setSessions] = useState<StockTakeSession[]>([]);
   const [recentEntries, setRecentEntries] = useState<StockEntry[]>([]);
@@ -18,15 +19,17 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
 
   useEffect(() => {
     async function load() {
-      const [itemsRes, locationsRes, statusesRes, entriesRes, sessionsRes] = await Promise.all([
+      const [itemsRes, locationsRes, usersRes, statusesRes, entriesRes, sessionsRes] = await Promise.all([
         fetch("/api/items"),
         fetch("/api/locations"),
+        fetch("/api/users"),
         fetch("/api/item-stock-status"),
         fetch("/api/stock-entries"),
         fetch("/api/sessions"),
       ]);
       setItems(await itemsRes.json());
       setLocations(await locationsRes.json());
+      setUsers(await usersRes.json());
       setStockStatuses(await statusesRes.json());
       setSessions(await sessionsRes.json());
       const allEntries: StockEntry[] = await entriesRes.json();
@@ -48,6 +51,11 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
 
   function locationName(id: string) {
     return locations.find((l) => l.id === id)?.name ?? "Unknown location";
+  }
+
+  function userName(id: string | null) {
+    if (!id) return null;
+    return users.find((u) => u.id === id)?.name ?? null;
   }
 
   function daysAgoLabel(iso: string | undefined) {
@@ -173,22 +181,26 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
           </div>
         ) : (
           <ul className="card divide-y divide-border">
-            {recentEntries.map((entry) => (
-              <li key={entry.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                <div>
-                  <span className="font-medium text-foreground">{itemName(entry.item_id)}</span>{" "}
-                  <span className="text-muted-foreground">at {locationName(entry.location_id)}</span>
-                </div>
-                <div className="text-right">
-                  <p className="text-foreground">
-                    {entry.quantity} {entry.unit}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(entry.counted_at).toLocaleString()}
-                  </p>
-                </div>
-              </li>
-            ))}
+            {recentEntries.map((entry) => {
+              const by = userName(entry.created_by);
+              return (
+                <li key={entry.id} className="flex items-center justify-between px-4 py-3 text-sm">
+                  <div>
+                    <span className="font-medium text-foreground">{itemName(entry.item_id)}</span>{" "}
+                    <span className="text-muted-foreground">at {locationName(entry.location_id)}</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-foreground">
+                      {entry.quantity} {entry.unit}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(entry.counted_at).toLocaleString()}
+                      {by ? ` · ${by}` : ""}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

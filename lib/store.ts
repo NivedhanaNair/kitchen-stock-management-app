@@ -7,6 +7,7 @@ import {
   locations,
   stockEntries,
   stockTakeSessions,
+  users,
 } from "@/lib/schema";
 import type {
   Category,
@@ -17,6 +18,7 @@ import type {
   StockEntry,
   StockLevel,
   StockTakeSession,
+  User,
 } from "@/types";
 
 /** Drops undefined-valued keys so a partial update only touches fields the caller actually provided. */
@@ -54,6 +56,42 @@ function mapSession(row: StockTakeSession): StockTakeSession {
 
 function mapStockEntry(row: StockEntry): StockEntry {
   return { ...row, counted_at: toIso(row.counted_at) };
+}
+
+// ---------------------------------------------------------------------------
+// Users (family accounts — shared household data, used for login + attribution)
+// ---------------------------------------------------------------------------
+
+/** Includes password_hash — for server-side auth checks only, never return this to a client. */
+export async function getUserByEmailWithPassword(
+  email: string
+): Promise<(User & { password_hash: string }) | undefined> {
+  const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+  return user;
+}
+
+export async function getUser(id: string): Promise<User | undefined> {
+  const [user] = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, id));
+  return user;
+}
+
+export async function listUsers(): Promise<User[]> {
+  return db.select({ id: users.id, name: users.name, email: users.email }).from(users);
+}
+
+export async function createUser(input: {
+  name: string;
+  email: string;
+  password_hash: string;
+}): Promise<User> {
+  const [user] = await db
+    .insert(users)
+    .values({ name: input.name, email: input.email.toLowerCase(), password_hash: input.password_hash })
+    .returning({ id: users.id, name: users.name, email: users.email });
+  return user;
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +289,7 @@ export async function createStockEntry(input: {
   unit: string;
   counted_at?: string;
   stock_take_session_id?: string | null;
+  created_by?: string | null;
 }): Promise<StockEntry> {
   const [entry] = await db
     .insert(stockEntries)
@@ -261,6 +300,7 @@ export async function createStockEntry(input: {
       unit: input.unit,
       counted_at: input.counted_at ?? undefined,
       stock_take_session_id: input.stock_take_session_id ?? null,
+      created_by: input.created_by ?? null,
     })
     .returning();
   return mapStockEntry(entry);
@@ -284,10 +324,15 @@ export async function getSession(id: string): Promise<StockTakeSession | undefin
 export async function createSession(input: {
   location_id?: string | null;
   notes?: string | null;
+  created_by?: string | null;
 }): Promise<StockTakeSession> {
   const [session] = await db
     .insert(stockTakeSessions)
-    .values({ location_id: input.location_id ?? null, notes: input.notes ?? null })
+    .values({
+      location_id: input.location_id ?? null,
+      notes: input.notes ?? null,
+      created_by: input.created_by ?? null,
+    })
     .returning();
   return mapSession(session);
 }

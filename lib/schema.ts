@@ -3,6 +3,18 @@ import { boolean, numeric, pgTable, text, timestamp, unique, uuid } from "drizzl
 // Column keys are snake_case (not idiomatic Drizzle style) so query results match the
 // existing API/frontend contract (types/index.ts) with no mapping layer in between.
 
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    password_hash: text("password_hash").notNull(),
+    created_at: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  },
+  (table) => [unique("users_email_unique").on(table.email)]
+);
+
 export const locations = pgTable("locations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -57,6 +69,7 @@ export const stockTakeSessions = pgTable("stock_take_sessions", {
   started_at: timestamp("started_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
   completed_at: timestamp("completed_at", { withTimezone: true, mode: "string" }),
   notes: text("notes"),
+  created_by: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
 });
 
 export const stockEntries = pgTable("stock_entries", {
@@ -71,4 +84,5 @@ export const stockEntries = pgTable("stock_entries", {
   unit: text("unit").notNull(),
   counted_at: timestamp("counted_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
   stock_take_session_id: uuid("stock_take_session_id").references(() => stockTakeSessions.id),
+  created_by: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
 });

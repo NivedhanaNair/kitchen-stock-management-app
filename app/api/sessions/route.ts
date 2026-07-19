@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { createSession, getLocation, listSessions } from "@/lib/store";
 
 export async function GET() {
@@ -18,9 +19,12 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const authSession = await auth();
+
   const session = await createSession({
     location_id: body.location_id ?? null,
     notes: body.notes ?? null,
+    created_by: authSession?.user?.id ?? null,
   });
 
   return NextResponse.json(session, { status: 201 });

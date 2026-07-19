@@ -8,6 +8,7 @@ import type {
   Location,
   StockEntry,
   StockTakeSession,
+  User,
 } from "@/types";
 
 const ALL_LOCATIONS = "__all__";
@@ -27,6 +28,7 @@ export default function StockTaker() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [sessions, setSessions] = useState<StockTakeSession[]>([]);
   const [allEntries, setAllEntries] = useState<StockEntry[]>([]);
   const [itemLocations, setItemLocations] = useState<ItemLocation[]>([]);
@@ -47,11 +49,12 @@ export default function StockTaker() {
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
 
   async function loadAll() {
-    const [locationsRes, itemsRes, categoriesRes, sessionsRes, entriesRes, itemLocationsRes] =
+    const [locationsRes, itemsRes, categoriesRes, usersRes, sessionsRes, entriesRes, itemLocationsRes] =
       await Promise.all([
         fetch("/api/locations"),
         fetch("/api/items"),
         fetch("/api/categories"),
+        fetch("/api/users"),
         fetch("/api/sessions"),
         fetch("/api/stock-entries"),
         fetch("/api/item-locations"),
@@ -59,6 +62,7 @@ export default function StockTaker() {
     setLocations(await locationsRes.json());
     setItems(await itemsRes.json());
     setCategories(await categoriesRes.json());
+    setUsers(await usersRes.json());
     setSessions(await sessionsRes.json());
     setAllEntries(await entriesRes.json());
     setItemLocations(await itemLocationsRes.json());
@@ -73,6 +77,10 @@ export default function StockTaker() {
   }
   function itemName(id: string) {
     return items.find((i) => i.id === id)?.name ?? "Unknown item";
+  }
+  function userName(id: string | null) {
+    if (!id) return null;
+    return users.find((u) => u.id === id)?.name ?? null;
   }
   function thresholdFor(itemId: string, locationId: string) {
     return itemLocations.find((il) => il.item_id === itemId && il.location_id === locationId)
@@ -518,35 +526,39 @@ export default function StockTaker() {
           </div>
         ) : (
           <ul className="card divide-y divide-border">
-            {historySessions.map((session) => (
-              <li key={session.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
-                <div>
-                  <span className="font-medium text-foreground">
-                    {session.location_id ? locationName(session.location_id) : "All Locations"}
-                  </span>{" "}
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(session.started_at).toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`badge ${
-                      session.completed_at ? "bg-success-soft text-success" : "bg-warning-soft text-warning"
-                    }`}
-                  >
-                    {session.completed_at ? "Completed" : "In progress"}
-                  </span>
-                  <button onClick={() => toggleView(session.id)} className="btn-secondary">
-                    {viewingSessionId === session.id ? "Hide" : "View"}
-                  </button>
-                  {!session.completed_at && session.id !== activeSessionId && (
-                    <button onClick={() => setActiveSessionId(session.id)} className="btn-secondary">
-                      Resume
+            {historySessions.map((session) => {
+              const startedBy = userName(session.created_by);
+              return (
+                <li key={session.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                  <div>
+                    <span className="font-medium text-foreground">
+                      {session.location_id ? locationName(session.location_id) : "All Locations"}
+                    </span>{" "}
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(session.started_at).toLocaleString()}
+                      {startedBy ? ` · by ${startedBy}` : ""}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`badge ${
+                        session.completed_at ? "bg-success-soft text-success" : "bg-warning-soft text-warning"
+                      }`}
+                    >
+                      {session.completed_at ? "Completed" : "In progress"}
+                    </span>
+                    <button onClick={() => toggleView(session.id)} className="btn-secondary">
+                      {viewingSessionId === session.id ? "Hide" : "View"}
                     </button>
-                  )}
-                </div>
-              </li>
-            ))}
+                    {!session.completed_at && session.id !== activeSessionId && (
+                      <button onClick={() => setActiveSessionId(session.id)} className="btn-secondary">
+                        Resume
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
 
@@ -562,16 +574,22 @@ export default function StockTaker() {
               <p className="text-sm text-muted-foreground">No entries logged in this session.</p>
             ) : (
               <ul className="divide-y divide-border">
-                {viewingEntries.map((entry) => (
-                  <li key={entry.id} className="flex justify-between py-2 text-sm">
-                    <span className="text-foreground">
-                      {itemName(entry.item_id)} <span className="text-muted-foreground">at {locationName(entry.location_id)}</span>
-                    </span>
-                    <span className="text-muted-foreground">
-                      {entry.quantity} {entry.unit}
-                    </span>
-                  </li>
-                ))}
+                {viewingEntries.map((entry) => {
+                  const loggedBy = userName(entry.created_by);
+                  return (
+                    <li key={entry.id} className="flex justify-between py-2 text-sm">
+                      <span className="text-foreground">
+                        {itemName(entry.item_id)} <span className="text-muted-foreground">at {locationName(entry.location_id)}</span>
+                      </span>
+                      <span className="text-right text-muted-foreground">
+                        <span>
+                          {entry.quantity} {entry.unit}
+                        </span>
+                        {loggedBy && <span className="block text-xs">by {loggedBy}</span>}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

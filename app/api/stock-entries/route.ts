@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
 import {
   createStockEntry,
   getItem,
@@ -38,6 +39,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "stock_take_session_id does not exist" }, { status: 400 });
   }
 
+  const session = await auth();
+
   const entry = await createStockEntry({
     item_id: body.item_id,
     location_id: body.location_id,
@@ -45,6 +48,7 @@ export async function POST(request: NextRequest) {
     unit: body.unit,
     counted_at: body.counted_at,
     stock_take_session_id: body.stock_take_session_id ?? null,
+    created_by: session?.user?.id ?? null,
   });
 
   return NextResponse.json(entry, { status: 201 });

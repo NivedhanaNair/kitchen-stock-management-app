@@ -15,6 +15,13 @@
       "when": 1784426632372,
       "tag": "0001_glossy_hawkeye",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784448486632,
+      "tag": "0002_clever_santa_claus",
+      "breakpoints": true
     }
   ]
 }
