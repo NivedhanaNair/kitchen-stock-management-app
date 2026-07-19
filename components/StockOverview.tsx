@@ -44,8 +44,16 @@ export default function StockOverview() {
     if (categoryFilter) {
       result = result.filter((i) => i.category === categoryFilter);
     }
-    return result.slice().sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
-  }, [items, search, categoryFilter]);
+
+    const hasStock = (item: Item) => stockLevels.some((l) => l.item_id === item.id);
+
+    return result.slice().sort((a, b) => {
+      const aHasStock = hasStock(a);
+      const bHasStock = hasStock(b);
+      if (aHasStock !== bHasStock) return aHasStock ? -1 : 1;
+      return a.category.localeCompare(b.category) || a.name.localeCompare(b.name);
+    });
+  }, [items, stockLevels, search, categoryFilter]);
 
   function levelFor(itemId: string, locationId: string) {
     return stockLevels.find((l) => l.item_id === itemId && l.location_id === locationId);
@@ -88,18 +96,28 @@ export default function StockOverview() {
             </option>
           ))}
         </select>
-        <select
-          value={locationFilter}
-          onChange={(e) => setLocationFilter(e.target.value)}
-          className="input-field"
+      </div>
+
+      <div className="inline-flex flex-wrap gap-1 rounded-xl border border-border bg-surface-muted p-1">
+        <button
+          onClick={() => setLocationFilter("")}
+          className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+            locationFilter === "" ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground"
+          }`}
         >
-          <option value="">All locations</option>
-          {locations.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.name}
-            </option>
-          ))}
-        </select>
+          All Locations
+        </button>
+        {locations.map((l) => (
+          <button
+            key={l.id}
+            onClick={() => setLocationFilter(l.id)}
+            className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+              locationFilter === l.id ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground"
+            }`}
+          >
+            {l.name}
+          </button>
+        ))}
       </div>
 
       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">

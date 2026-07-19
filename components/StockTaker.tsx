@@ -36,10 +36,13 @@ export default function StockTaker() {
   const [viewingSessionId, setViewingSessionId] = useState<string | null>(null);
   const [historyLocationFilter, setHistoryLocationFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [showAllItems, setShowAllItems] = useState(false);
   const [skippedKeys, setSkippedKeys] = useState<Set<string>>(new Set());
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [summary, setSummary] = useState<SummaryRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [viewingEntries, setViewingEntries] = useState<StockEntry[]>([]);
+  const [viewingLoading, setViewingLoading] = useState(false);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
 
@@ -97,12 +100,28 @@ export default function StockTaker() {
     return locations.filter((l) => l.is_active);
   }, [activeSession, locations]);
 
-  const visibleItems = useMemo(
-    () => (categoryFilter ? items.filter((i) => i.category === categoryFilter) : items).filter(
+  const visibleItems = useMemo(() => {
+    const base = (categoryFilter ? items.filter((i) => i.category === categoryFilter) : items).filter(
       (i) => i.is_active
-    ),
-    [items, categoryFilter]
-  );
+    );
+
+    // Single-location sessions default to items relevant to that location (has a threshold
+    // there, or has been counted there before); "All Locations" sessions always show
+    // everything since they're an intentional full sweep.
+    const locationId = activeSession?.location_id;
+    if (showAllItems || !locationId) return base;
+
+    const scoped = base.filter(
+      (i) =>
+        itemLocations.some((il) => il.item_id === i.id && il.location_id === locationId) ||
+        allEntries.some((e) => e.item_id === i.id && e.location_id === locationId)
+    );
+    // Never dead-end a location with nothing tracked there yet — fall back to the full list.
+    return scoped.length > 0 ? scoped : base;
+  }, [items, categoryFilter, activeSession, itemLocations, allEntries, showAllItems]);
+
+  const isScopedToRelevantItems =
+    !showAllItems && !!activeSession?.location_id && visibleItems.length < items.length;
 
   const sessionEntryKeys = useMemo(() => {
     if (!activeSessionId) return new Set<string>();
@@ -152,6 +171,7 @@ export default function StockTaker() {
     setActiveSessionId(session.id);
     setSkippedKeys(new Set());
     setDraft({});
+    setShowAllItems(false);
   }
 
   async function commitQuantity(itemId: string, locationId: string, rawValue: string) {
@@ -266,9 +286,18 @@ export default function StockTaker() {
     .reverse();
 
   const viewingSession = sessions.find((s) => s.id === viewingSessionId) ?? null;
-  const viewingEntries = viewingSessionId
-    ? allEntries.filter((e) => e.stock_take_session_id === viewingSessionId)
-    : [];
+
+  async function toggleView(sessionId: string) {
+    if (viewingSessionId === sessionId) {
+      setViewingSessionId(null);
+      return;
+    }
+    setViewingSessionId(sessionId);
+    setViewingLoading(true);
+    const res = await fetch(`/api/stock-entries?stock_take_session_id=${sessionId}`);
+    setViewingEntries(res.ok ? await res.json() : []);
+    setViewingLoading(false);
+  }
 
   return (
     <div className="space-y-6">
@@ -347,6 +376,22 @@ export default function StockTaker() {
               <p className="text-xs text-muted-foreground">
                 Started {new Date(activeSession.started_at).toLocaleString()} &middot; {countedCells}/{totalCells} items counted
               </p>
+              {isScopedToRelevantItems && (
+                <p className="text-xs text-accent">
+                  Showing items already tracked at this location.{" "}
+                  <button onClick={() => setShowAllItems(true)} className="underline">
+                    Show all items
+                  </button>
+                </p>
+              )}
+              {showAllItems && activeSession.location_id && (
+                <p className="text-xs text-muted-foreground">
+                  Showing every item.{" "}
+                  <button onClick={() => setShowAllItems(false)} className="underline">
+                    Show relevant items only
+                  </button>
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <select
@@ -490,10 +535,7 @@ export default function StockTaker() {
                   >
                     {session.completed_at ? "Completed" : "In progress"}
                   </span>
-                  <button
-                    onClick={() => setViewingSessionId(viewingSessionId === session.id ? null : session.id)}
-                    className="btn-secondary"
-                  >
+                  <button onClick={() => toggleView(session.id)} className="btn-secondary">
                     {viewingSessionId === session.id ? "Hide" : "View"}
                   </button>
                   {!session.completed_at && session.id !== activeSessionId && (
@@ -513,7 +555,9 @@ export default function StockTaker() {
               Entries logged &mdash;{" "}
               {viewingSession.location_id ? locationName(viewingSession.location_id) : "All Locations"}
             </p>
-            {viewingEntries.length === 0 ? (
+            {viewingLoading ? (
+              <p className="text-sm text-muted-foreground">Loading entries...</p>
+            ) : viewingEntries.length === 0 ? (
               <p className="text-sm text-muted-foreground">No entries logged in this session.</p>
             ) : (
               <ul className="divide-y divide-border">

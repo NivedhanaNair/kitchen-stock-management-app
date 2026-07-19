@@ -11,8 +11,8 @@ import SettingsPage from "@/components/SettingsPage";
 
 const TABS = [
   { key: "dashboard", label: "Dashboard" },
-  { key: "items", label: "Items" },
   { key: "stock", label: "Stock" },
+  { key: "items", label: "Items" },
   { key: "stock-take", label: "Stock Take" },
   { key: "shopping-list", label: "Shopping List" },
   { key: "settings", label: "Settings" },

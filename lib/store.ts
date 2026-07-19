@@ -12,6 +12,7 @@ import type {
   Category,
   Item,
   ItemLocation,
+  ItemStockStatus,
   Location,
   StockEntry,
   StockLevel,
@@ -131,6 +132,7 @@ export async function createItem(input: {
   preferred_brand?: string | null;
   notes?: string | null;
   is_active?: boolean;
+  default_reorder_threshold?: number | null;
 }): Promise<Item> {
   const [item] = await db
     .insert(items)
@@ -141,6 +143,7 @@ export async function createItem(input: {
       preferred_brand: input.preferred_brand ?? null,
       notes: input.notes ?? null,
       is_active: input.is_active ?? true,
+      default_reorder_threshold: input.default_reorder_threshold ?? null,
     })
     .returning();
   return mapItem(item);
@@ -149,7 +152,10 @@ export async function createItem(input: {
 export async function updateItem(
   id: string,
   input: Partial<
-    Pick<Item, "name" | "category" | "unit" | "preferred_brand" | "notes" | "is_active">
+    Pick<
+      Item,
+      "name" | "category" | "unit" | "preferred_brand" | "notes" | "is_active" | "default_reorder_threshold"
+    >
   >
 ): Promise<Item | undefined> {
   const fields = definedFields(input);
@@ -334,4 +340,41 @@ export async function computeStockLevels(): Promise<StockLevel[]> {
     order by se.item_id, se.location_id, se.counted_at desc
   `);
   return result.rows;
+}
+
+/**
+ * Per-item stock status. By default (no per-location thresholds set for an item) checks
+ * TOTAL stock across all locations against the item's default_reorder_threshold — one
+ * item, one validation. If any per-location thresholds are set for an item, that item is
+ * checked per-location instead (the opt-in advanced mode).
+ */
+export async function computeItemStockStatuses(): Promise<ItemStockStatus[]> {
+  const [allItems, levels] = await Promise.all([listItems(), computeStockLevels()]);
+
+  return allItems.map((item) => {
+    const perLocationLevels = levels.filter((l) => l.item_id === item.id);
+    const hasPerLocationThresholds = perLocationLevels.some((l) => l.reorder_threshold !== null);
+    const totalQuantity = perLocationLevels.reduce((sum, l) => sum + l.quantity, 0);
+
+    if (hasPerLocationThresholds) {
+      return {
+        item_id: item.id,
+        mode: "per_location" as const,
+        total_quantity: totalQuantity,
+        threshold: null,
+        is_low: perLocationLevels.some((l) => l.reorder_threshold !== null && l.quantity <= l.reorder_threshold),
+        per_location: perLocationLevels,
+      };
+    }
+
+    const threshold = item.default_reorder_threshold;
+    return {
+      item_id: item.id,
+      mode: "total" as const,
+      total_quantity: totalQuantity,
+      threshold,
+      is_low: threshold !== null && totalQuantity <= threshold,
+      per_location: perLocationLevels,
+    };
+  });
 }

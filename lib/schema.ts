@@ -29,6 +29,9 @@ export const items = pgTable("items", {
   is_active: boolean("is_active").notNull().default(true),
   created_at: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  // Optional default threshold checked against total stock across all locations. Per-location
+  // thresholds (below) are an opt-in override that takes precedence when any are set.
+  default_reorder_threshold: numeric("default_reorder_threshold", { mode: "number" }),
 });
 
 export const itemLocationThresholds = pgTable(

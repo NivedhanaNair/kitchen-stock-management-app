@@ -1,12 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Item, Location, StockLevel } from "@/types";
+import type { Item, ItemStockStatus, Location } from "@/types";
 
 interface ManualEntry {
   id: string;
   text: string;
   bought: boolean;
+}
+
+interface NeededRow {
+  key: string;
+  itemId: string;
+  locationId: string | null;
+  quantity: number;
+  threshold: number;
 }
 
 const BOUGHT_STORAGE_KEY = "stock-app.shopping-list.bought";
@@ -17,7 +25,7 @@ type GroupMode = "category" | "location";
 export default function ShoppingList() {
   const [items, setItems] = useState<Item[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [stockLevels, setStockLevels] = useState<StockLevel[]>([]);
+  const [stockStatuses, setStockStatuses] = useState<ItemStockStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [groupMode, setGroupMode] = useState<GroupMode>("category");
   const [bought, setBought] = useState<Record<string, boolean>>({});
@@ -27,14 +35,14 @@ export default function ShoppingList() {
 
   useEffect(() => {
     async function load() {
-      const [itemsRes, locationsRes, levelsRes] = await Promise.all([
+      const [itemsRes, locationsRes, statusesRes] = await Promise.all([
         fetch("/api/items"),
         fetch("/api/locations"),
-        fetch("/api/stock-levels"),
+        fetch("/api/item-stock-status"),
       ]);
       setItems(await itemsRes.json());
       setLocations(await locationsRes.json());
-      setStockLevels(await levelsRes.json());
+      setStockStatuses(await statusesRes.json());
       setLoading(false);
     }
     load();
@@ -75,20 +83,45 @@ export default function ShoppingList() {
     return locations.find((l) => l.id === id)?.name ?? "Unknown location";
   }
 
-  const needed = useMemo(
-    () => stockLevels.filter((l) => l.reorder_threshold !== null && l.quantity <= l.reorder_threshold),
-    [stockLevels]
+  const needed: NeededRow[] = useMemo(
+    () =>
+      stockStatuses
+        .filter((s) => s.is_low)
+        .flatMap((s) => {
+          if (s.mode === "total") {
+            const row: NeededRow = {
+              key: s.item_id,
+              itemId: s.item_id,
+              locationId: null,
+              quantity: s.total_quantity,
+              threshold: s.threshold ?? 0,
+            };
+            return [row];
+          }
+          return s.per_location
+            .filter((l) => l.reorder_threshold !== null && l.quantity <= l.reorder_threshold)
+            .map((l) => ({
+              key: `${l.item_id}::${l.location_id}`,
+              itemId: l.item_id,
+              locationId: l.location_id,
+              quantity: l.quantity,
+              threshold: l.reorder_threshold ?? 0,
+            }));
+        }),
+    [stockStatuses]
   );
 
   const grouped = useMemo(() => {
-    const groups = new Map<string, StockLevel[]>();
-    for (const level of needed) {
+    const groups = new Map<string, NeededRow[]>();
+    for (const row of needed) {
       const key =
         groupMode === "category"
-          ? items.find((i) => i.id === level.item_id)?.category ?? "Uncategorized"
-          : locations.find((l) => l.id === level.location_id)?.name ?? "Unknown location";
+          ? items.find((i) => i.id === row.itemId)?.category ?? "Uncategorized"
+          : row.locationId
+            ? locations.find((l) => l.id === row.locationId)?.name ?? "Unknown location"
+            : "All locations (total stock)";
       const list = groups.get(key) ?? [];
-      list.push(level);
+      list.push(row);
       groups.set(key, list);
     }
     return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
@@ -116,14 +149,14 @@ export default function ShoppingList() {
 
   function buildPlainText() {
     const lines: string[] = ["Shopping List", ""];
-    for (const [group, levels] of grouped) {
+    for (const [group, rows] of grouped) {
       lines.push(`${group}:`);
-      for (const level of levels) {
-        const key = `${level.item_id}::${level.location_id}`;
-        const shortBy = (level.reorder_threshold ?? 0) - level.quantity;
-        const mark = bought[key] ? "[x]" : "[ ]";
+      for (const row of rows) {
+        const shortBy = row.threshold - row.quantity;
+        const mark = bought[row.key] ? "[x]" : "[ ]";
+        const where = row.locationId ? ` (${locationName(row.locationId)})` : "";
         lines.push(
-          `  ${mark} ${itemName(level.item_id)} (${locationName(level.location_id)}) — have ${level.quantity}, need ${level.reorder_threshold}, short by ${shortBy}`
+          `  ${mark} ${itemName(row.itemId)}${where} — have ${row.quantity}, need ${row.threshold}, short by ${shortBy}`
         );
       }
       lines.push("");
@@ -198,27 +231,28 @@ export default function ShoppingList() {
         </div>
       ) : (
         <div className="space-y-4">
-          {grouped.map(([group, levels]) => (
+          {grouped.map(([group, rows]) => (
             <div key={group}>
               <h3 className="section-title mb-2">{group}</h3>
               <ul className="card divide-y divide-border">
-                {levels.map((level) => {
-                  const key = `${level.item_id}::${level.location_id}`;
-                  const shortBy = (level.reorder_threshold ?? 0) - level.quantity;
+                {rows.map((row) => {
+                  const shortBy = row.threshold - row.quantity;
                   return (
-                    <li key={key} className="flex items-center gap-3 px-4 py-3 text-sm">
+                    <li key={row.key} className="flex items-center gap-3 px-4 py-3 text-sm">
                       <input
                         type="checkbox"
-                        checked={bought[key] ?? false}
-                        onChange={() => toggleBought(key)}
+                        checked={bought[row.key] ?? false}
+                        onChange={() => toggleBought(row.key)}
                         className="h-4 w-4 accent-accent"
                       />
-                      <div className={`flex-1 ${bought[key] ? "text-muted-foreground line-through" : ""}`}>
-                        <span className="font-medium text-foreground">{itemName(level.item_id)}</span>{" "}
-                        <span className="text-muted-foreground">at {locationName(level.location_id)}</span>
+                      <div className={`flex-1 ${bought[row.key] ? "text-muted-foreground line-through" : ""}`}>
+                        <span className="font-medium text-foreground">{itemName(row.itemId)}</span>{" "}
+                        <span className="text-muted-foreground">
+                          {row.locationId ? `at ${locationName(row.locationId)}` : "(total across locations)"}
+                        </span>
                       </div>
                       <span className="text-xs text-warning">
-                        have {level.quantity} · need {level.reorder_threshold} · short {shortBy}
+                        have {row.quantity} · need {row.threshold} · short {shortBy}
                       </span>
                     </li>
                   );

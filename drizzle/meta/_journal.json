@@ -8,6 +8,13 @@
       "when": 1784421865604,
       "tag": "0000_foamy_eddie_brock",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784426632372,
+      "tag": "0001_glossy_hawkeye",
+      "breakpoints": true
     }
   ]
 }

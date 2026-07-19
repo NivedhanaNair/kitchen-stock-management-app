@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Item, Location, StockEntry, StockLevel, StockTakeSession } from "@/types";
+import type { Item, ItemStockStatus, Location, StockEntry, StockTakeSession } from "@/types";
 
 interface DashboardProps {
   onNavigate?: (tab: "items" | "stock-take" | "shopping-list") => void;
@@ -10,7 +10,7 @@ interface DashboardProps {
 export default function Dashboard({ onNavigate }: DashboardProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [stockLevels, setStockLevels] = useState<StockLevel[]>([]);
+  const [stockStatuses, setStockStatuses] = useState<ItemStockStatus[]>([]);
   const [sessions, setSessions] = useState<StockTakeSession[]>([]);
   const [recentEntries, setRecentEntries] = useState<StockEntry[]>([]);
   const [now, setNow] = useState(0);
@@ -18,16 +18,16 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
 
   useEffect(() => {
     async function load() {
-      const [itemsRes, locationsRes, levelsRes, entriesRes, sessionsRes] = await Promise.all([
+      const [itemsRes, locationsRes, statusesRes, entriesRes, sessionsRes] = await Promise.all([
         fetch("/api/items"),
         fetch("/api/locations"),
-        fetch("/api/stock-levels"),
+        fetch("/api/item-stock-status"),
         fetch("/api/stock-entries"),
         fetch("/api/sessions"),
       ]);
       setItems(await itemsRes.json());
       setLocations(await locationsRes.json());
-      setStockLevels(await levelsRes.json());
+      setStockStatuses(await statusesRes.json());
       setSessions(await sessionsRes.json());
       const allEntries: StockEntry[] = await entriesRes.json();
       setRecentEntries(
@@ -68,9 +68,37 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     ).completed_at!;
   }
 
-  const belowThreshold = stockLevels.filter(
-    (level) => level.reorder_threshold !== null && level.quantity <= level.reorder_threshold
-  );
+  interface AlertRow {
+    key: string;
+    itemId: string;
+    locationId: string | null;
+    quantity: number;
+    threshold: number | null;
+  }
+
+  const alertRows: AlertRow[] = stockStatuses
+    .filter((s) => s.is_low)
+    .flatMap((s) => {
+      if (s.mode === "total") {
+        const row: AlertRow = {
+          key: s.item_id,
+          itemId: s.item_id,
+          locationId: null,
+          quantity: s.total_quantity,
+          threshold: s.threshold,
+        };
+        return [row];
+      }
+      return s.per_location
+        .filter((l) => l.reorder_threshold !== null && l.quantity <= l.reorder_threshold)
+        .map((l) => ({
+          key: `${l.item_id}::${l.location_id}`,
+          itemId: l.item_id,
+          locationId: l.location_id,
+          quantity: l.quantity,
+          threshold: l.reorder_threshold,
+        }));
+    });
 
   if (loading) {
     return <p className="text-sm text-muted-foreground">Loading dashboard...</p>;
@@ -91,35 +119,34 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
       </section>
 
       <section>
-        <h2 className="section-title mb-3">Reorder Alerts ({belowThreshold.length})</h2>
-        {belowThreshold.length === 0 ? (
+        <h2 className="section-title mb-3">Reorder Alerts ({alertRows.length})</h2>
+        {alertRows.length === 0 ? (
           <div className="card p-8 text-center text-sm text-muted-foreground">
             Everything is above its reorder threshold.
           </div>
         ) : (
           <ul className="divide-y divide-warning/20 overflow-hidden rounded-2xl border border-warning/30 bg-warning-soft">
-            {belowThreshold.slice(0, 5).map((level) => (
-              <li
-                key={`${level.item_id}::${level.location_id}`}
-                className="flex items-center justify-between px-4 py-3 text-sm"
-              >
+            {alertRows.slice(0, 5).map((row) => (
+              <li key={row.key} className="flex items-center justify-between px-4 py-3 text-sm">
                 <div>
-                  <span className="font-medium text-foreground">{itemName(level.item_id)}</span>{" "}
-                  <span className="text-muted-foreground">at {locationName(level.location_id)}</span>
+                  <span className="font-medium text-foreground">{itemName(row.itemId)}</span>{" "}
+                  <span className="text-muted-foreground">
+                    {row.locationId ? `at ${locationName(row.locationId)}` : "(total across locations)"}
+                  </span>
                 </div>
                 <span className="font-medium text-warning">
-                  {level.quantity} on hand (reorder @ {level.reorder_threshold})
+                  {row.quantity} on hand (reorder @ {row.threshold})
                 </span>
               </li>
             ))}
           </ul>
         )}
-        {belowThreshold.length > 5 && (
+        {alertRows.length > 5 && (
           <button
             onClick={() => onNavigate?.("shopping-list")}
             className="mt-2 text-xs font-medium text-accent hover:underline"
           >
-            View all {belowThreshold.length} on the Shopping List &rarr;
+            View all {alertRows.length} on the Shopping List &rarr;
           </button>
         )}
       </section>

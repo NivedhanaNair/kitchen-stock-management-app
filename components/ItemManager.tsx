@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Category, Item, Location, StockLevel } from "@/types";
+import type { Category, Item, ItemStockStatus, Location, StockLevel } from "@/types";
 import { UNIT_OPTIONS } from "@/lib/constants";
 
 const emptyForm = {
@@ -10,6 +10,7 @@ const emptyForm = {
   unit: "",
   preferred_brand: "",
   notes: "",
+  default_reorder_threshold: "",
 };
 
 type SortMode = "name" | "category" | "stock";
@@ -27,6 +28,7 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [stockLevels, setStockLevels] = useState<StockLevel[]>([]);
+  const [stockStatuses, setStockStatuses] = useState<ItemStockStatus[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,16 +43,18 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
 
   async function loadAll() {
     setLoading(true);
-    const [itemsRes, locationsRes, categoriesRes, levelsRes] = await Promise.all([
+    const [itemsRes, locationsRes, categoriesRes, levelsRes, statusesRes] = await Promise.all([
       fetch("/api/items"),
       fetch("/api/locations"),
       fetch("/api/categories"),
       fetch("/api/stock-levels"),
+      fetch("/api/item-stock-status"),
     ]);
     setItems(await itemsRes.json());
     setLocations(await locationsRes.json());
     setCategories(await categoriesRes.json());
     setStockLevels(await levelsRes.json());
+    setStockStatuses(await statusesRes.json());
     setLoading(false);
   }
 
@@ -64,6 +68,10 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
 
   function levelsForItem(itemId: string) {
     return stockLevels.filter((l) => l.item_id === itemId);
+  }
+
+  function statusForItem(itemId: string) {
+    return stockStatuses.find((s) => s.item_id === itemId);
   }
 
   const visibleItems = useMemo(() => {
@@ -84,7 +92,7 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
 
     const withLowFlag = result.map((item) => ({
       item,
-      low: stockLevels.some((l) => l.item_id === item.id && isLowStock(l)),
+      low: stockStatuses.find((s) => s.item_id === item.id)?.is_low ?? false,
     }));
 
     withLowFlag.sort((a, b) => {
@@ -99,7 +107,7 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
     });
 
     return withLowFlag;
-  }, [items, stockLevels, search, categoryFilter, locationFilter, sortMode]);
+  }, [items, stockLevels, stockStatuses, search, categoryFilter, locationFilter, sortMode]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -108,6 +116,14 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
     if (!form.name.trim() || !form.category.trim() || !form.unit.trim()) {
       setError("Name, category, and unit are required");
       return;
+    }
+    let defaultThreshold: number | null = null;
+    if (form.default_reorder_threshold.trim() !== "") {
+      defaultThreshold = Number(form.default_reorder_threshold);
+      if (Number.isNaN(defaultThreshold)) {
+        setError("Default reorder threshold must be a number");
+        return;
+      }
     }
 
     const res = await fetch("/api/items", {
@@ -119,6 +135,7 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
         unit: form.unit,
         preferred_brand: form.preferred_brand || null,
         notes: form.notes || null,
+        default_reorder_threshold: defaultThreshold,
       }),
     });
 
@@ -129,6 +146,11 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
     }
 
     setForm(emptyForm);
+    // A lingering search/category/location filter can hide an item with no stock data yet —
+    // clear filters so the item you just added is always visible immediately.
+    setSearch("");
+    setCategoryFilter("");
+    setLocationFilter("");
     await loadAll();
   }
 
@@ -154,6 +176,8 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
       unit: item.unit,
       preferred_brand: item.preferred_brand ?? "",
       notes: item.notes ?? "",
+      default_reorder_threshold:
+        item.default_reorder_threshold !== null ? String(item.default_reorder_threshold) : "",
     });
   }
 
@@ -162,6 +186,14 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
     if (!editForm.name.trim() || !editForm.category.trim() || !editForm.unit.trim()) {
       setError("Name, category, and unit are required");
       return;
+    }
+    let defaultThreshold: number | null = null;
+    if (editForm.default_reorder_threshold.trim() !== "") {
+      defaultThreshold = Number(editForm.default_reorder_threshold);
+      if (Number.isNaN(defaultThreshold)) {
+        setError("Default reorder threshold must be a number");
+        return;
+      }
     }
     const res = await fetch(`/api/items/${id}`, {
       method: "PUT",
@@ -172,6 +204,7 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
         unit: editForm.unit,
         preferred_brand: editForm.preferred_brand || null,
         notes: editForm.notes || null,
+        default_reorder_threshold: defaultThreshold,
       }),
     });
     if (!res.ok) {
@@ -228,11 +261,18 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
           className="input-field"
         />
         <input
+          type="number"
+          placeholder="Reorder threshold (optional, checked against total stock)"
+          value={form.default_reorder_threshold}
+          onChange={(e) => setForm({ ...form, default_reorder_threshold: e.target.value })}
+          className="input-field"
+        />
+        <input
           type="text"
           placeholder="Notes (optional)"
           value={form.notes}
           onChange={(e) => setForm({ ...form, notes: e.target.value })}
-          className="input-field sm:col-span-2"
+          className="input-field"
         />
         <button type="submit" className="btn-primary col-span-full">
           Add Item
@@ -296,6 +336,7 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
             const levels = levelsForItem(item.id).filter(
               (l) => !locationFilter || l.location_id === locationFilter
             );
+            const status = statusForItem(item.id);
             const isEditing = editingItemId === item.id;
 
             return (
@@ -335,10 +376,19 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
                       placeholder="Preferred brand"
                     />
                     <input
+                      type="number"
+                      value={editForm.default_reorder_threshold}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, default_reorder_threshold: e.target.value })
+                      }
+                      className="input-field"
+                      placeholder="Reorder threshold (total stock)"
+                    />
+                    <input
                       type="text"
                       value={editForm.notes}
                       onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                      className="input-field sm:col-span-2"
+                      className="input-field"
                       placeholder="Notes"
                     />
                     <div className="col-span-full flex gap-2">
@@ -367,13 +417,19 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
                         <p className="mt-0.5 text-xs text-muted-foreground">Brand: {item.preferred_brand}</p>
                       )}
                       {item.notes && <p className="text-xs text-muted-foreground">{item.notes}</p>}
+                      {status?.mode === "total" && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Total stock: {status.total_quantity} {item.unit}
+                          {status.threshold !== null ? ` (reorder @ ${status.threshold} total)` : ""}
+                        </p>
+                      )}
                       {levels.length > 0 ? (
                         <p className="mt-1 text-xs text-muted-foreground">
                           {levels
                             .map(
                               (l) =>
                                 `${locationName(l.location_id)}: ${l.quantity} ${item.unit}${
-                                  isLowStock(l) ? " (low)" : ""
+                                  status?.mode === "per_location" && isLowStock(l) ? " (low)" : ""
                                 }`
                             )
                             .join(" · ")}
@@ -399,7 +455,9 @@ export default function ItemManager({ onManageThresholds }: ItemManagerProps) {
                           onClick={() => onManageThresholds(item.id)}
                           className="text-xs font-medium text-accent hover:underline"
                         >
-                          Manage thresholds &rarr;
+                          {status?.mode === "per_location"
+                            ? "Manage per-location thresholds →"
+                            : "Set per-location thresholds instead →"}
                         </button>
                       )}
                     </div>

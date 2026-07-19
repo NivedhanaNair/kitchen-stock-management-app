@@ -1,0 +1,1 @@
+ALTER TABLE "items" ADD COLUMN "default_reorder_threshold" numeric;

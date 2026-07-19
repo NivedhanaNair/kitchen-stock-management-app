@@ -21,6 +21,15 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (body.name !== undefined && (typeof body.name !== "string" || body.name.trim() === "")) {
     return NextResponse.json({ error: "name must be a non-empty string" }, { status: 400 });
   }
+  if (
+    body.default_reorder_threshold != null &&
+    (typeof body.default_reorder_threshold !== "number" || Number.isNaN(body.default_reorder_threshold))
+  ) {
+    return NextResponse.json(
+      { error: "default_reorder_threshold must be a number" },
+      { status: 400 }
+    );
+  }
 
   const item = await updateItem(id, {
     name: body.name,
@@ -29,6 +38,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     preferred_brand: body.preferred_brand,
     notes: body.notes,
     is_active: body.is_active,
+    default_reorder_threshold: body.default_reorder_threshold,
   });
 
   if (!item) {

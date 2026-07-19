@@ -10,7 +10,6 @@ export default function Header() {
             Kitchen Stock Manager
           </h1>
         </div>
-        <span className="badge bg-accent-soft text-accent-soft-foreground">Sandbox mode</span>
       </div>
     </header>
   );
