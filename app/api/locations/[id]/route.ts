@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireHouseholdId } from "@/lib/session";
 import { deleteLocation, getLocation, updateLocation } from "@/lib/store";
 
 interface Params {
@@ -6,8 +7,11 @@ interface Params {
 }
 
 export async function GET(_request: NextRequest, { params }: Params) {
+  const householdId = await requireHouseholdId();
+  if (!householdId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
-  const location = await getLocation(id);
+  const location = await getLocation(id, householdId);
   if (!location) {
     return NextResponse.json({ error: "Location not found" }, { status: 404 });
   }
@@ -15,6 +19,9 @@ export async function GET(_request: NextRequest, { params }: Params) {
 }
 
 export async function PUT(request: NextRequest, { params }: Params) {
+  const householdId = await requireHouseholdId();
+  if (!householdId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
   const body = await request.json();
 
@@ -22,7 +29,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "name must be a non-empty string" }, { status: 400 });
   }
 
-  const location = await updateLocation(id, {
+  const location = await updateLocation(id, householdId, {
     name: body.name,
     is_active: body.is_active,
   });
@@ -35,8 +42,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_request: NextRequest, { params }: Params) {
+  const householdId = await requireHouseholdId();
+  if (!householdId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
-  const deleted = await deleteLocation(id);
+  const deleted = await deleteLocation(id, householdId);
   if (!deleted) {
     return NextResponse.json({ error: "Location not found" }, { status: 404 });
   }

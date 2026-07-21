@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireHouseholdId } from "@/lib/session";
 import { createItem, listItems } from "@/lib/store";
 
 export async function GET() {
-  return NextResponse.json(await listItems());
+  const householdId = await requireHouseholdId();
+  if (!householdId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  return NextResponse.json(await listItems(householdId));
 }
 
 export async function POST(request: NextRequest) {
+  const householdId = await requireHouseholdId();
+  if (!householdId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await request.json();
 
   if (typeof body.name !== "string" || body.name.trim() === "") {
@@ -27,7 +34,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const item = await createItem({
+  const item = await createItem(householdId, {
     name: body.name,
     category: body.category,
     unit: body.unit,

@@ -39,12 +39,19 @@ export interface ItemLocation {
   updated_at: string;
 }
 
-/** A family member account. Everyone shares the same household data — this is only for
- *  login identity and attributing who logged which stock count. */
+/** One family's isolated data set. Everyone in it shares one password — no per-person
+ *  credentials — so members never see another household's locations, items, or stock. */
+export interface Household {
+  id: string;
+  created_at: string;
+}
+
+/** A family member identity within a household — just a display name, no separate
+ *  credential. Used for login identity (alongside the shared household password) and for
+ *  attributing who logged which stock count. */
 export interface User {
   id: string;
   name: string;
-  email: string;
 }
 
 export interface StockEntry {

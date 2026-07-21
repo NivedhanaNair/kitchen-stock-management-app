@@ -9,8 +9,7 @@
     "lint": "eslint",
     "db:generate": "dotenv -e .env.local -- drizzle-kit generate",
     "db:push": "dotenv -e .env.local -- drizzle-kit push",
-    "db:studio": "dotenv -e .env.local -- drizzle-kit studio",
-    "db:seed": "dotenv -e .env.local -- tsx scripts/seed.ts"
+    "db:studio": "dotenv -e .env.local -- drizzle-kit studio"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

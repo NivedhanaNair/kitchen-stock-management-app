@@ -3,11 +3,10 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -17,11 +16,11 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
-    const res = await signIn("credentials", { email, password, redirect: false });
+    const res = await signIn("credentials", { name, password, redirect: false });
 
     setLoading(false);
     if (!res || res.error) {
-      setError("Invalid email or password");
+      setError("Something went wrong signing in. Try again.");
       return;
     }
     router.push("/");
@@ -31,35 +30,34 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="card w-full max-w-sm p-6">
-        <h1 className="mb-1 text-lg font-semibold text-foreground">Sign in</h1>
-        <p className="mb-6 text-sm text-muted-foreground">Kitchen Stock Manager</p>
+        <h1 className="mb-1 text-lg font-semibold text-foreground">Kitchen Stock Manager</h1>
+        <p className="mb-6 text-sm text-muted-foreground">Enter your name and your family&apos;s password</p>
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
-            type="email"
+            type="text"
             required
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Your name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             className="input-field w-full"
           />
           <input
             type="password"
             required
-            placeholder="Password"
+            placeholder="Family password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="input-field w-full"
           />
           {error && <p className="text-sm text-danger">{error}</p>}
           <button type="submit" disabled={loading} className="btn-primary w-full">
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? "Signing in..." : "Continue"}
           </button>
         </form>
-        <p className="mt-4 text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{" "}
-          <Link href="/signup" className="text-accent hover:underline">
-            Sign up
-          </Link>
+        <p className="mt-4 text-center text-xs text-muted-foreground">
+          New family? Just make up a password and enter it above with your name — the first
+          time it&apos;s used creates your family&apos;s space. Share that same password with your
+          family so everyone can join and see the same stock.
         </p>
       </div>
     </div>

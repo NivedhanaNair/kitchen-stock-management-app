@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { currentUserId, requireHouseholdId } from "@/lib/session";
 import {
   createStockEntry,
   getItem,
@@ -9,8 +9,11 @@ import {
 } from "@/lib/store";
 
 export async function GET(request: NextRequest) {
+  const householdId = await requireHouseholdId();
+  if (!householdId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const sessionId = request.nextUrl.searchParams.get("stock_take_session_id");
-  const entries = await listStockEntries();
+  const entries = await listStockEntries(householdId);
   if (sessionId) {
     return NextResponse.json(entries.filter((e) => e.stock_take_session_id === sessionId));
   }
@@ -18,12 +21,15 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const householdId = await requireHouseholdId();
+  if (!householdId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await request.json();
 
-  if (typeof body.item_id !== "string" || !(await getItem(body.item_id))) {
+  if (typeof body.item_id !== "string" || !(await getItem(body.item_id, householdId))) {
     return NextResponse.json({ error: "item_id must reference an existing item" }, { status: 400 });
   }
-  if (typeof body.location_id !== "string" || !(await getLocation(body.location_id))) {
+  if (typeof body.location_id !== "string" || !(await getLocation(body.location_id, householdId))) {
     return NextResponse.json(
       { error: "location_id must reference an existing location" },
       { status: 400 }
@@ -35,20 +41,20 @@ export async function POST(request: NextRequest) {
   if (typeof body.unit !== "string" || body.unit.trim() === "") {
     return NextResponse.json({ error: "unit is required" }, { status: 400 });
   }
-  if (body.stock_take_session_id && !(await getSession(body.stock_take_session_id))) {
+  if (body.stock_take_session_id && !(await getSession(body.stock_take_session_id, householdId))) {
     return NextResponse.json({ error: "stock_take_session_id does not exist" }, { status: 400 });
   }
 
-  const session = await auth();
+  const userId = await currentUserId();
 
-  const entry = await createStockEntry({
+  const entry = await createStockEntry(householdId, {
     item_id: body.item_id,
     location_id: body.location_id,
     quantity: body.quantity,
     unit: body.unit,
     counted_at: body.counted_at,
     stock_take_session_id: body.stock_take_session_id ?? null,
-    created_by: session?.user?.id ?? null,
+    created_by: userId,
   });
 
   return NextResponse.json(entry, { status: 201 });

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireHouseholdId } from "@/lib/session";
 import { completeSession, getSession, updateSession } from "@/lib/store";
 
 interface Params {
@@ -6,8 +7,11 @@ interface Params {
 }
 
 export async function GET(_request: NextRequest, { params }: Params) {
+  const householdId = await requireHouseholdId();
+  if (!householdId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
-  const session = await getSession(id);
+  const session = await getSession(id, householdId);
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
@@ -15,10 +19,16 @@ export async function GET(_request: NextRequest, { params }: Params) {
 }
 
 export async function PUT(request: NextRequest, { params }: Params) {
+  const householdId = await requireHouseholdId();
+  if (!householdId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
   const body = await request.json();
 
-  const session = body.complete === true ? await completeSession(id) : await updateSession(id, { notes: body.notes });
+  const session =
+    body.complete === true
+      ? await completeSession(id, householdId)
+      : await updateSession(id, householdId, { notes: body.notes });
 
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });

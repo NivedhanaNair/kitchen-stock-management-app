@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireHouseholdId } from "@/lib/session";
 import { computeItemStockStatuses } from "@/lib/store";
 
 /**
@@ -7,5 +8,8 @@ import { computeItemStockStatuses } from "@/lib/store";
  * thresholds set are checked per-location instead. Used by Dashboard/Shopping List/Items.
  */
 export async function GET() {
-  return NextResponse.json(await computeItemStockStatuses());
+  const householdId = await requireHouseholdId();
+  if (!householdId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  return NextResponse.json(await computeItemStockStatuses(householdId));
 }

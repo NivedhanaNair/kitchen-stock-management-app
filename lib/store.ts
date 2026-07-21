@@ -1,7 +1,9 @@
 import { and, eq, sql } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import {
   categories,
+  households,
   itemLocationThresholds,
   items,
   locations,
@@ -9,8 +11,10 @@ import {
   stockTakeSessions,
   users,
 } from "@/lib/schema";
+import { DEFAULT_CATEGORIES, DEFAULT_ITEMS, DEFAULT_LOCATIONS } from "@/lib/constants";
 import type {
   Category,
+  Household,
   Item,
   ItemLocation,
   ItemStockStatus,
@@ -59,75 +63,125 @@ function mapStockEntry(row: StockEntry): StockEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Users (family accounts — shared household data, used for login + attribution)
+// Households — one shared password per family. No per-person accounts; "users" below are
+// just names for attribution, all unlocked by the same household password.
 // ---------------------------------------------------------------------------
 
-/** Includes password_hash — for server-side auth checks only, never return this to a client. */
-export async function getUserByEmailWithPassword(
-  email: string
-): Promise<(User & { password_hash: string }) | undefined> {
-  const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
-  return user;
+/** Linear-scans households and bcrypt-compares — fine for the small number of households
+ *  a personal app like this will ever have; passwords are salted so they can't be looked
+ *  up by an indexed equality match. */
+export async function getHouseholdByPassword(password: string): Promise<Household | undefined> {
+  const allHouseholds = await db.select().from(households);
+  for (const household of allHouseholds) {
+    if (await bcrypt.compare(password, household.password_hash)) {
+      return { id: household.id, created_at: toIso(household.created_at) };
+    }
+  }
+  return undefined;
 }
+
+export async function createHousehold(password: string): Promise<Household> {
+  const password_hash = await bcrypt.hash(password, 12);
+  const [household] = await db.insert(households).values({ password_hash }).returning();
+  return { id: household.id, created_at: toIso(household.created_at) };
+}
+
+/** Seeds a brand new household with the starter catalog (locations, categories, items) but
+ *  no stock counts — the family starts fresh and only sees stock from what they count from here on. */
+export async function seedHouseholdCatalog(householdId: string): Promise<void> {
+  await db.insert(locations).values(DEFAULT_LOCATIONS.map((name) => ({ household_id: householdId, name })));
+  await db
+    .insert(categories)
+    .values(DEFAULT_CATEGORIES.map((name) => ({ household_id: householdId, name })));
+  await db.insert(items).values(DEFAULT_ITEMS.map((item) => ({ household_id: householdId, ...item })));
+}
+
+// ---------------------------------------------------------------------------
+// Users — just a display name within a household, used for login identity and attribution.
+// ---------------------------------------------------------------------------
 
 export async function getUser(id: string): Promise<User | undefined> {
-  const [user] = await db
-    .select({ id: users.id, name: users.name, email: users.email })
+  const [user] = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.id, id));
+  return user;
+}
+
+/** Only the caller's own household's members — never leaks another family's names. */
+export async function listUsers(householdId: string): Promise<User[]> {
+  return db.select({ id: users.id, name: users.name }).from(users).where(eq(users.household_id, householdId));
+}
+
+/** Returns the existing member with this name if there is one (so "Mom" logging in from a
+ *  new device resolves to the same identity), otherwise creates it. */
+export async function findOrCreateUser(householdId: string, name: string): Promise<User> {
+  const [existing] = await db
+    .select({ id: users.id, name: users.name })
     .from(users)
-    .where(eq(users.id, id));
-  return user;
-}
+    .where(and(eq(users.household_id, householdId), eq(users.name, name)));
+  if (existing) return existing;
 
-export async function listUsers(): Promise<User[]> {
-  return db.select({ id: users.id, name: users.name, email: users.email }).from(users);
-}
-
-export async function createUser(input: {
-  name: string;
-  email: string;
-  password_hash: string;
-}): Promise<User> {
-  const [user] = await db
+  const [inserted] = await db
     .insert(users)
-    .values({ name: input.name, email: input.email.toLowerCase(), password_hash: input.password_hash })
-    .returning({ id: users.id, name: users.name, email: users.email });
-  return user;
+    .values({ household_id: householdId, name })
+    .onConflictDoNothing()
+    .returning({ id: users.id, name: users.name });
+  if (inserted) return inserted;
+
+  // Lost a race with a concurrent request creating the same name — fetch what it created.
+  const [row] = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(and(eq(users.household_id, householdId), eq(users.name, name)));
+  return row;
 }
 
 // ---------------------------------------------------------------------------
 // Locations
 // ---------------------------------------------------------------------------
 
-export async function listLocations(): Promise<Location[]> {
-  const rows = await db.select().from(locations);
+export async function listLocations(householdId: string): Promise<Location[]> {
+  const rows = await db.select().from(locations).where(eq(locations.household_id, householdId));
   return rows.map(mapLocation);
 }
 
-export async function getLocation(id: string): Promise<Location | undefined> {
-  const [location] = await db.select().from(locations).where(eq(locations.id, id));
+export async function getLocation(id: string, householdId: string): Promise<Location | undefined> {
+  const [location] = await db
+    .select()
+    .from(locations)
+    .where(and(eq(locations.id, id), eq(locations.household_id, householdId)));
   return location && mapLocation(location);
 }
 
-export async function createLocation(input: { name: string; is_active?: boolean }): Promise<Location> {
+export async function createLocation(
+  householdId: string,
+  input: { name: string; is_active?: boolean }
+): Promise<Location> {
   const [location] = await db
     .insert(locations)
-    .values({ name: input.name, is_active: input.is_active ?? true })
+    .values({ household_id: householdId, name: input.name, is_active: input.is_active ?? true })
     .returning();
   return mapLocation(location);
 }
 
 export async function updateLocation(
   id: string,
+  householdId: string,
   input: Partial<Pick<Location, "name" | "is_active">>
 ): Promise<Location | undefined> {
   const fields = definedFields(input);
-  if (Object.keys(fields).length === 0) return getLocation(id);
-  const [location] = await db.update(locations).set(fields).where(eq(locations.id, id)).returning();
+  if (Object.keys(fields).length === 0) return getLocation(id, householdId);
+  const [location] = await db
+    .update(locations)
+    .set(fields)
+    .where(and(eq(locations.id, id), eq(locations.household_id, householdId)))
+    .returning();
   return location && mapLocation(location);
 }
 
-export async function deleteLocation(id: string): Promise<boolean> {
-  const deleted = await db.delete(locations).where(eq(locations.id, id)).returning({ id: locations.id });
+export async function deleteLocation(id: string, householdId: string): Promise<boolean> {
+  const deleted = await db
+    .delete(locations)
+    .where(and(eq(locations.id, id), eq(locations.household_id, householdId)))
+    .returning({ id: locations.id });
   return deleted.length > 0;
 }
 
@@ -135,17 +189,20 @@ export async function deleteLocation(id: string): Promise<boolean> {
 // Categories
 // ---------------------------------------------------------------------------
 
-export async function listCategories(): Promise<Category[]> {
-  return db.select().from(categories);
+export async function listCategories(householdId: string): Promise<Category[]> {
+  return db.select().from(categories).where(eq(categories.household_id, householdId));
 }
 
-export async function createCategory(name: string): Promise<Category> {
-  const [category] = await db.insert(categories).values({ name }).returning();
+export async function createCategory(householdId: string, name: string): Promise<Category> {
+  const [category] = await db.insert(categories).values({ household_id: householdId, name }).returning();
   return category;
 }
 
-export async function deleteCategory(id: string): Promise<boolean> {
-  const deleted = await db.delete(categories).where(eq(categories.id, id)).returning({ id: categories.id });
+export async function deleteCategory(id: string, householdId: string): Promise<boolean> {
+  const deleted = await db
+    .delete(categories)
+    .where(and(eq(categories.id, id), eq(categories.household_id, householdId)))
+    .returning({ id: categories.id });
   return deleted.length > 0;
 }
 
@@ -153,28 +210,35 @@ export async function deleteCategory(id: string): Promise<boolean> {
 // Items
 // ---------------------------------------------------------------------------
 
-export async function listItems(): Promise<Item[]> {
-  const rows = await db.select().from(items);
+export async function listItems(householdId: string): Promise<Item[]> {
+  const rows = await db.select().from(items).where(eq(items.household_id, householdId));
   return rows.map(mapItem);
 }
 
-export async function getItem(id: string): Promise<Item | undefined> {
-  const [item] = await db.select().from(items).where(eq(items.id, id));
+export async function getItem(id: string, householdId: string): Promise<Item | undefined> {
+  const [item] = await db
+    .select()
+    .from(items)
+    .where(and(eq(items.id, id), eq(items.household_id, householdId)));
   return item && mapItem(item);
 }
 
-export async function createItem(input: {
-  name: string;
-  category: string;
-  unit: string;
-  preferred_brand?: string | null;
-  notes?: string | null;
-  is_active?: boolean;
-  default_reorder_threshold?: number | null;
-}): Promise<Item> {
+export async function createItem(
+  householdId: string,
+  input: {
+    name: string;
+    category: string;
+    unit: string;
+    preferred_brand?: string | null;
+    notes?: string | null;
+    is_active?: boolean;
+    default_reorder_threshold?: number | null;
+  }
+): Promise<Item> {
   const [item] = await db
     .insert(items)
     .values({
+      household_id: householdId,
       name: input.name,
       category: input.category,
       unit: input.unit,
@@ -189,6 +253,7 @@ export async function createItem(input: {
 
 export async function updateItem(
   id: string,
+  householdId: string,
   input: Partial<
     Pick<
       Item,
@@ -200,14 +265,17 @@ export async function updateItem(
   const [item] = await db
     .update(items)
     .set({ ...fields, updated_at: sql`now()` })
-    .where(eq(items.id, id))
+    .where(and(eq(items.id, id), eq(items.household_id, householdId)))
     .returning();
   return item && mapItem(item);
 }
 
 /** Removes the item; its thresholds and stock history cascade-delete at the DB level. */
-export async function deleteItem(id: string): Promise<boolean> {
-  const deleted = await db.delete(items).where(eq(items.id, id)).returning({ id: items.id });
+export async function deleteItem(id: string, householdId: string): Promise<boolean> {
+  const deleted = await db
+    .delete(items)
+    .where(and(eq(items.id, id), eq(items.household_id, householdId)))
+    .returning({ id: items.id });
   return deleted.length > 0;
 }
 
@@ -215,12 +283,16 @@ export async function deleteItem(id: string): Promise<boolean> {
 // Item-Location mappings (per-location reorder thresholds)
 // ---------------------------------------------------------------------------
 
-export async function listItemLocations(): Promise<ItemLocation[]> {
-  const rows = await db.select().from(itemLocationThresholds);
+export async function listItemLocations(householdId: string): Promise<ItemLocation[]> {
+  const rows = await db
+    .select()
+    .from(itemLocationThresholds)
+    .where(eq(itemLocationThresholds.household_id, householdId));
   return rows.map(mapItemLocation);
 }
 
 export async function getItemLocation(
+  householdId: string,
   itemId: string,
   locationId: string
 ): Promise<ItemLocation | undefined> {
@@ -228,20 +300,24 @@ export async function getItemLocation(
     .select()
     .from(itemLocationThresholds)
     .where(
-      and(eq(itemLocationThresholds.item_id, itemId), eq(itemLocationThresholds.location_id, locationId))
+      and(
+        eq(itemLocationThresholds.household_id, householdId),
+        eq(itemLocationThresholds.item_id, itemId),
+        eq(itemLocationThresholds.location_id, locationId)
+      )
     );
   return row && mapItemLocation(row);
 }
 
 /** Creates the mapping if absent, otherwise updates its reorder threshold. */
-export async function upsertItemLocation(input: {
-  item_id: string;
-  location_id: string;
-  reorder_threshold: number;
-}): Promise<ItemLocation> {
+export async function upsertItemLocation(
+  householdId: string,
+  input: { item_id: string; location_id: string; reorder_threshold: number }
+): Promise<ItemLocation> {
   const [row] = await db
     .insert(itemLocationThresholds)
     .values({
+      household_id: householdId,
       item_id: input.item_id,
       location_id: input.location_id,
       reorder_threshold: input.reorder_threshold,
@@ -255,11 +331,19 @@ export async function upsertItemLocation(input: {
 }
 
 /** Unsets the threshold for an item/location pair (it simply won't be tracked for alerts). */
-export async function deleteItemLocation(itemId: string, locationId: string): Promise<boolean> {
+export async function deleteItemLocation(
+  householdId: string,
+  itemId: string,
+  locationId: string
+): Promise<boolean> {
   const deleted = await db
     .delete(itemLocationThresholds)
     .where(
-      and(eq(itemLocationThresholds.item_id, itemId), eq(itemLocationThresholds.location_id, locationId))
+      and(
+        eq(itemLocationThresholds.household_id, householdId),
+        eq(itemLocationThresholds.item_id, itemId),
+        eq(itemLocationThresholds.location_id, locationId)
+      )
     )
     .returning({ id: itemLocationThresholds.id });
   return deleted.length > 0;
@@ -269,31 +353,40 @@ export async function deleteItemLocation(itemId: string, locationId: string): Pr
 // Stock entries
 // ---------------------------------------------------------------------------
 
-export async function listStockEntries(): Promise<StockEntry[]> {
-  const rows = await db.select().from(stockEntries);
+export async function listStockEntries(householdId: string): Promise<StockEntry[]> {
+  const rows = await db.select().from(stockEntries).where(eq(stockEntries.household_id, householdId));
   return rows.map(mapStockEntry);
 }
 
-export async function listStockEntriesBySession(sessionId: string): Promise<StockEntry[]> {
+export async function listStockEntriesBySession(
+  householdId: string,
+  sessionId: string
+): Promise<StockEntry[]> {
   const rows = await db
     .select()
     .from(stockEntries)
-    .where(eq(stockEntries.stock_take_session_id, sessionId));
+    .where(
+      and(eq(stockEntries.household_id, householdId), eq(stockEntries.stock_take_session_id, sessionId))
+    );
   return rows.map(mapStockEntry);
 }
 
-export async function createStockEntry(input: {
-  item_id: string;
-  location_id: string;
-  quantity: number;
-  unit: string;
-  counted_at?: string;
-  stock_take_session_id?: string | null;
-  created_by?: string | null;
-}): Promise<StockEntry> {
+export async function createStockEntry(
+  householdId: string,
+  input: {
+    item_id: string;
+    location_id: string;
+    quantity: number;
+    unit: string;
+    counted_at?: string;
+    stock_take_session_id?: string | null;
+    created_by?: string | null;
+  }
+): Promise<StockEntry> {
   const [entry] = await db
     .insert(stockEntries)
     .values({
+      household_id: householdId,
       item_id: input.item_id,
       location_id: input.location_id,
       quantity: input.quantity,
@@ -310,25 +403,31 @@ export async function createStockEntry(input: {
 // Stock take sessions
 // ---------------------------------------------------------------------------
 
-export async function listSessions(): Promise<StockTakeSession[]> {
-  const rows = await db.select().from(stockTakeSessions);
+export async function listSessions(householdId: string): Promise<StockTakeSession[]> {
+  const rows = await db
+    .select()
+    .from(stockTakeSessions)
+    .where(eq(stockTakeSessions.household_id, householdId));
   return rows.map(mapSession);
 }
 
-export async function getSession(id: string): Promise<StockTakeSession | undefined> {
-  const [session] = await db.select().from(stockTakeSessions).where(eq(stockTakeSessions.id, id));
+export async function getSession(id: string, householdId: string): Promise<StockTakeSession | undefined> {
+  const [session] = await db
+    .select()
+    .from(stockTakeSessions)
+    .where(and(eq(stockTakeSessions.id, id), eq(stockTakeSessions.household_id, householdId)));
   return session && mapSession(session);
 }
 
 /** location_id null means the session sweeps all locations rather than one. */
-export async function createSession(input: {
-  location_id?: string | null;
-  notes?: string | null;
-  created_by?: string | null;
-}): Promise<StockTakeSession> {
+export async function createSession(
+  householdId: string,
+  input: { location_id?: string | null; notes?: string | null; created_by?: string | null }
+): Promise<StockTakeSession> {
   const [session] = await db
     .insert(stockTakeSessions)
     .values({
+      household_id: householdId,
       location_id: input.location_id ?? null,
       notes: input.notes ?? null,
       created_by: input.created_by ?? null,
@@ -339,23 +438,27 @@ export async function createSession(input: {
 
 export async function updateSession(
   id: string,
+  householdId: string,
   input: Partial<Pick<StockTakeSession, "notes" | "completed_at">>
 ): Promise<StockTakeSession | undefined> {
   const fields = definedFields(input);
-  if (Object.keys(fields).length === 0) return getSession(id);
+  if (Object.keys(fields).length === 0) return getSession(id, householdId);
   const [session] = await db
     .update(stockTakeSessions)
     .set(fields)
-    .where(eq(stockTakeSessions.id, id))
+    .where(and(eq(stockTakeSessions.id, id), eq(stockTakeSessions.household_id, householdId)))
     .returning();
   return session && mapSession(session);
 }
 
-export async function completeSession(id: string): Promise<StockTakeSession | undefined> {
+export async function completeSession(
+  id: string,
+  householdId: string
+): Promise<StockTakeSession | undefined> {
   const [session] = await db
     .update(stockTakeSessions)
     .set({ completed_at: sql`now()` })
-    .where(eq(stockTakeSessions.id, id))
+    .where(and(eq(stockTakeSessions.id, id), eq(stockTakeSessions.household_id, householdId)))
     .returning();
   return session && mapSession(session);
 }
@@ -365,7 +468,7 @@ export async function completeSession(id: string): Promise<StockTakeSession | un
 // ---------------------------------------------------------------------------
 
 /** Latest stock quantity per item/location, with the effective reorder threshold (null if unset). */
-export async function computeStockLevels(): Promise<StockLevel[]> {
+export async function computeStockLevels(householdId: string): Promise<StockLevel[]> {
   const result = await db.execute<{
     item_id: string;
     location_id: string;
@@ -382,6 +485,7 @@ export async function computeStockLevels(): Promise<StockLevel[]> {
     from stock_entries se
     left join item_location_thresholds ilt
       on ilt.item_id = se.item_id and ilt.location_id = se.location_id
+    where se.household_id = ${householdId}
     order by se.item_id, se.location_id, se.counted_at desc
   `);
   return result.rows;
@@ -393,8 +497,8 @@ export async function computeStockLevels(): Promise<StockLevel[]> {
  * item, one validation. If any per-location thresholds are set for an item, that item is
  * checked per-location instead (the opt-in advanced mode).
  */
-export async function computeItemStockStatuses(): Promise<ItemStockStatus[]> {
-  const [allItems, levels] = await Promise.all([listItems(), computeStockLevels()]);
+export async function computeItemStockStatuses(householdId: string): Promise<ItemStockStatus[]> {
+  const [allItems, levels] = await Promise.all([listItems(householdId), computeStockLevels(householdId)]);
 
   return allItems.map((item) => {
     const perLocationLevels = levels.filter((l) => l.item_id === item.id);

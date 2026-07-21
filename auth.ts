@@ -1,27 +1,39 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
-import { getUserByEmailWithPassword } from "@/lib/store";
+import {
+  createHousehold,
+  findOrCreateUser,
+  getHouseholdByPassword,
+  seedHouseholdCatalog,
+} from "@/lib/store";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
       credentials: {
-        email: {},
+        name: {},
         password: {},
       },
+      /**
+       * No separate signup step: entering a password no household has ever used creates a
+       * new one (seeded with the starter catalog); entering an existing one joins it. The
+       * name is just an identity within that household, reused if it already exists there.
+       */
       async authorize(credentials) {
-        const email = credentials?.email;
+        const name = credentials?.name;
         const password = credentials?.password;
-        if (typeof email !== "string" || typeof password !== "string") return null;
+        if (typeof name !== "string" || !name.trim() || typeof password !== "string" || !password) {
+          return null;
+        }
 
-        const user = await getUserByEmailWithPassword(email);
-        if (!user) return null;
+        let household = await getHouseholdByPassword(password);
+        if (!household) {
+          household = await createHousehold(password);
+          await seedHouseholdCatalog(household.id);
+        }
 
-        const valid = await bcrypt.compare(password, user.password_hash);
-        if (!valid) return null;
-
-        return { id: user.id, name: user.name, email: user.email };
+        const user = await findOrCreateUser(household.id, name.trim());
+        return { id: user.id, name: user.name, householdId: household.id };
       },
     }),
   ],
@@ -33,12 +45,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        token.householdId = (user as { householdId: string }).householdId;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.id) {
         session.user.id = token.id as string;
+        session.user.householdId = token.householdId as string;
       }
       return session;
     },
